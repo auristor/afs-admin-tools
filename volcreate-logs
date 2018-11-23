@@ -1,11 +1,15 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # volcreate-logs -- Create and grant quota to log volumes in AFS.
 #
 # Written by Russ Allbery <eagle@eyrie.org>
 # Copyright 2002, 2004, 2011, 2012, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -54,6 +58,12 @@ our $FS = 'fs';
 our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
 $VOS ||= 'vos';
 
+# Maximum quota
+our $LOGS_MAX_QUOTA = '50G';
+
+# Cell root used for validation
+our $CELL_ROOT = '/afs/@cell';
+
 # Load the configuration file if it exists.
 if (-f '/etc/afs-admin-tools/config') {
     require '/etc/afs-admin-tools/config';
@@ -70,7 +80,7 @@ sub system {
         print "@_\n";
         return 0;
     } else {
-        return CORE::system (@_);
+        return CORE::system(@_);
     }
 }
 
@@ -82,9 +92,9 @@ sub system {
 sub start_mail {
     my ($sendmail) = grep { -x $_ } qw(/usr/sbin/sendmail /usr/lib/sendmail);
     $sendmail ||= '/usr/lib/sendmail';
-    my $date = strftime ("%Y-%m-%d", localtime);
-    open (MAIL, "| $sendmail -t -oi -oem")
-        or die "Cannot fork $sendmail: $!\n";
+    my $date = strftime("%Y-%m-%d", localtime);
+    open(MAIL, "| $sendmail -t -oi -oem")
+      or die "Cannot fork $sendmail: $!";
     print MAIL "To: $LOGS_ADDRESS\n";
     print MAIL "Subject: Log volume report ($date)\n";
     print MAIL "\n";
@@ -96,7 +106,9 @@ sub start_mail {
 # message.
 sub report {
     if ($MAIL) {
-        start_mail unless $MAILOPEN;
+        if (!$MAILOPEN) {
+            start_mail;
+        }
         print MAIL @_;
     } else {
         print @_;
@@ -107,14 +119,65 @@ sub report {
 # Volume quota checking
 ##############################################################################
 
+# This subroutine takes a quota specification and return the value in
+# kilobytes.  The input is assumed to be megabytes if the units are
+# not specified.
+
+sub kbytes {
+    my ($quota) = @_;
+    my $quota_kbytes;
+    if ($quota =~ /^(\d+)$/xms) {
+        $quota_kbytes = $quota * 1024;
+    } elsif ($quota =~ /^(\d+)([kmgt])/xmsi) {
+        my $q = $1;
+        my $m = $2;
+        if (lc($m) eq 't') {
+            $quota_kbytes = $q * 1024 * 1024 * 1024;
+        } elsif (lc($m) eq 'g') {
+            $quota_kbytes = $q * 1024 * 1024;
+        } elsif (lc($m) eq 'm') {
+            $quota_kbytes = $q * 1024;
+        } elsif (lc($m) eq 'k') {
+            $quota_kbytes = $q;
+        } else {
+            die "ERROR: invalid unit of measure ($m)";
+        }
+    }
+    if (!$quota_kbytes) {
+        die "ERROR: invalid quota value ($quota)";
+    }
+    return $quota_kbytes;
+}
+
+# This subroutine takes a quota specification in kbytes and returns
+# a human friendly form.
+
+sub display_kbytes {
+    my ($quota_kbytes) = @_;
+    my @sizes = ('T', 'G', 'M');
+    my $quota = "${quota_kbytes}K";
+    my $i     = $quota_kbytes;
+    my $u     = 'K';
+    while ($i > 1024) {
+        if (@sizes) {
+            $i     = $i / 1024;
+            $u     = pop(@sizes);
+            $quota = "${i}$u";
+        } else {
+            last;
+        }
+    }
+    return $quota;
+}
+
 # Takes the volume name, the full path to a mount point for a volume, and the
 # minimum quota that that volume should have.  Increases the quota of the
 # volume to at least the minimum and by 10% if the volume is within 90% of its
 # quota.
 sub check_quota {
-    my ($volume, $mountpoint, $minimum) = @_;
-    $minimum *= 1000;
-    my @listquota = `$FS listquota $mountpoint 2>&1`;
+    my ($volume, $mountpoint, $quota_min) = @_;
+    my $minimum   = kbytes($quota_min);
+    my @listquota = `$FS listquota -path $mountpoint 2>&1`;
 
     # The first line is either an error or headers.  Check to see if it is
     # an error, and if not, ignore it.  The second line is our quota
@@ -126,8 +189,8 @@ sub check_quota {
         return;
     }
     shift @listquota;
-    my ($volname, $quota, $used, $percent) = split (' ', $listquota[0]);
-    unless ($percent =~ s/%(<\<)?$//) {
+    my ($volname, $quota, $used, $percent) = split(' ', $listquota[0]);
+    if (!($percent =~ s/%(<\<)?$//)) {
         warn "Unable to parse: $listquota[0]";
         warn "Unable to get quota information for $volume\n";
         return;
@@ -135,13 +198,19 @@ sub check_quota {
 
     # Figure out if we need to do anything.
     my $newquota = $quota;
-    $newquota = int (($quota / 10000) * 1.1 + 0.9) * 10000 if ($percent > 90);
+    if ($percent > 90) {
+        $newquota = int($quota * 1.1 + 0.9);
+    }
     $newquota = $minimum if ($newquota < $minimum);
     if ($newquota != $quota) {
-        report "Setting quota to ", $newquota / 1000, "MB for $volume\n";
-        if (system ($FS, 'setquota', $mountpoint, $newquota) != 0) {
+        my $s = display_kbytes($newquota);
+        report "Setting quota to $s MB for $volume\n";
+        if (
+            system($FS, 'setquota', '-path', $mountpoint, '-max', $newquota)
+            != 0)
+        {
             warn "$FS setquota $mountpoint $newquota exited with status ",
-                ($? >> 8), "\n";
+              ($? >> 8), "\n";
             warn "Unable to set quota for $volume\n";
         }
     }
@@ -156,7 +225,7 @@ sub check_quota {
 sub lsmount {
     my ($path) = @_;
     if ($path =~ /[\\\';]/) {
-        die "$0: invalid character in $path\n";
+        die "$0: invalid character in $path";
     }
     my $volume = `$FS lsmount '$path' 2>&1`;
     if ($volume =~ /is a mount point for volume \'\#([^\']+)\'/) {
@@ -171,10 +240,10 @@ sub lsmount {
 # the volume name in a list.
 sub find_volume_month {
     my ($base, $month, $year) = @_;
-    $month = sprintf ("%02d", $month);
+    $month = sprintf("%02d", $month);
     my ($volume, $path);
     if (-d "$base/$year/$month") {
-        $volume = lsmount ("$base/$year/$month");
+        $volume = lsmount("$base/$year/$month");
         $path = "$base/$year/$month" if defined $volume;
     }
     return ($volume, $path);
@@ -187,8 +256,10 @@ sub find_volume_year {
     my ($base, $year) = @_;
     my ($volume, $path);
     if (-d "$base/$year") {
-        $volume = lsmount ("$base/$year");
-        $path = "$base/$year" if defined $volume;
+        $volume = lsmount("$base/$year");
+        if (defined $volume) {
+            $path = "$base/$year";
+        }
     }
     return ($volume, $path);
 }
@@ -203,43 +274,56 @@ sub find_volume_year {
 # already exist.
 sub create_volume {
     my ($volume, $mountpoint, $quota, $quiet) = @_;
-    if ($quota > 50000) {
-        warn "$volume not created: ${quota}MB exceeds maximum of 50GB\n";
+    my $quota_kbytes = kbytes($quota);
+    my $max = kbytes($LOGS_MAX_QUOTA);
+    if ($quota_kbytes > $max) {
+        my $s = display_kbytes($quota_kbytes);
+        my $m = display_kbytes($max);
+        warn "$volume not created: ${s} exceeds maximum of $m\n";
         return;
     }
-    $mountpoint =~ s%/afs/ir%/afs/.ir%;
+    my $cell_root_rw = reverse($CELL_ROOT);
+    $cell_root_rw =~ s%(.*?)/%$1./%xms;
+    $cell_root_rw = reverse($cell_root_rw);
+    $mountpoint =~ s%$CELL_ROOT%$cell_root_rw%;
     if (-d "$mountpoint") {
         warn "$volume not created: $mountpoint already exists\n";
         return;
     }
-    if (!$JUSTPRINT && system ("$VOS examine $volume >/dev/null 2>&1") == 0) {
+    if (!$JUSTPRINT
+        && system("$VOS examine -id $volume >/dev/null 2>&1") == 0)
+    {
         warn "$volume not created: volume already exists\n";
         return;
     }
 
     # Create the volume.
-    my @command = ('-t', 'logs', $volume, $quota, $mountpoint);
-    unshift (@command, '-q') if $quiet;
-    if (system ($VOLCREATE, @command) != 0) {
-        warn "$VOLCREATE -t logs $volume $quota $mountpoint exited with",
-            " status ", ($? >> 8), "\n";
+    my @command = ('-t', 'logs', $volume, $quota_kbytes, $mountpoint);
+    if ($quiet) {
+        unshift(@command, '-q');
+    }
+    if (system($VOLCREATE, @command) != 0) {
+        warn "$VOLCREATE -t logs $volume $quota_kbytes $mountpoint exited ",
+	  "with status ", ($? >> 8), "\n";
         warn "$volume not fully created, please check\n";
     } else {
-        report "Created $volume with quota ${quota}MB\n";
+        my $s = display_kbytes($quota_kbytes);
+        report "Created $volume with quota ${s}\n";
     }
+    return;
 }
 
 # For a yearly log volume, create all of the month subdirectories.  Takes the
 # base directory of the new log volume.
 sub create_month_dirs {
     my ($base) = @_;
-    for (1..12) {
-        my $month = sprintf ("%02d", $_);
+    for (1 .. 12) {
+        my $month = sprintf("%02d", $_);
         if ($JUSTPRINT) {
             print "mkdir $base/$month\n";
         } else {
-            mkdir ("$base/$month", 0755)
-                or warn "Could not create $base/$month: $!\n";
+            mkdir("$base/$month", 0755)
+              or warn "Could not create $base/$month: $!\n";
         }
     }
 }
@@ -251,24 +335,24 @@ sub create_log_volume {
     my ($year, $month, $config, $quiet) = @_;
     my ($path, $volume);
     if ($$config{type} eq 'monthly') {
-        $path = sprintf ("$$config{path}/%04d/%02d", $year, $month);
-        $volume = sprintf ("%s.%04d%02d", $$config{name}, $year, $month);
+        $path = sprintf("$$config{path}/%04d/%02d", $year, $month);
+        $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
         if (!-d "$$config{path}/$year") {
             if ($JUSTPRINT) {
                 print "mkdir $$config{path}/$year\n";
-            } elsif (!mkdir ("$$config{path}/$year", 0755)) {
+            } elsif (!mkdir("$$config{path}/$year", 0755)) {
                 warn "Could not create $$config{path}/$year: $!\n";
                 warn "$volume not created\n";
                 return;
             }
         }
     } elsif ($$config{type} eq 'yearly') {
-        $path = sprintf ("$$config{path}/%04d", $year);
-        $volume = sprintf ("%s.%04d", $$config{name}, $year);
+        $path = sprintf("$$config{path}/%04d", $year);
+        $volume = sprintf("%s.%04d", $$config{name}, $year);
     }
     if (!-d $path) {
-        create_volume ($volume, $path, $$config{quota}, $quiet);
-        create_month_dirs ($path) if $$config{type} eq 'yearly';
+        create_volume($volume, $path, $$config{quota}, $quiet);
+        create_month_dirs($path) if $$config{type} eq 'yearly';
     }
 }
 
@@ -287,7 +371,9 @@ sub parse_log {
         if (/^\s*\}/) {
             my $okay = 1;
             for (qw/name path type quota/) {
-                $okay = 0 unless exists $log{$_};
+                if (!exists $log{$_}) {
+                    $okay = 0;
+                }
             }
             if ($okay) {
                 return \%log;
@@ -296,16 +382,21 @@ sub parse_log {
                 return undef;
             }
         }
-        my ($key, $value) = split (/:\s+/, $_, 2);
+        my ($key, $value) = split(/:\s+/, $_, 2);
         $key =~ s/^\s+//;
         $value =~ s/\s+$//;
-        unless ($value) {
+        if (!$value) {
             warn "Parse error in log group on line $.\n";
             next;
         }
-        unless ($key =~ /^(name|path|type|quota)$/) {
-            warn "Unknown attribute $key on line $.\n";
+        if (!($key =~ /^(name|path|type|quota)$/)) {
+            warn "Unknown attribute on line $. ($key)\n";
             next;
+        }
+        if ($key eq 'quota') {
+            if ($value =~ /^\d+$/xms) {
+                $value = kbytes("${value}M");
+            }
         }
         $log{$key} = $value;
     }
@@ -317,13 +408,19 @@ sub parse_log {
 # configuration information for each log.
 sub parse_config {
     my @config;
-    open (CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!\n";
+    open(CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!";
     while (<CONFIG>) {
-        next if /^\s*\#/;
-        next if /^\s*$/;
+        if (/^\s*\#/) {
+            next;
+        }
+        if (/^\s*$/) {
+            next;
+        }
         if (/^\s*log\s+\{\s*$/) {
-            my $config = parse_log (\*CONFIG);
-            push (@config, $config) if $config;
+            my $config = parse_log(\*CONFIG);
+            if ($config) {
+                push(@config, $config);
+            }
         } else {
             warn "Parse error in configuration file on line $.\n";
             next;
@@ -338,37 +435,41 @@ sub parse_config {
 
 # Parse command line options.
 my ($help, $quiet, $ticket, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('n|dry-run|just-print' => \$JUSTPRINT,
-            'h|help'               => \$help,
-            'k|ticket-cache=s'     => \$ticket,
-            'm|mail'               => \$MAIL,
-            'q|quiet'              => \$quiet,
-            'v|version'            => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'n|dry-run|just-print' => \$JUSTPRINT,
+    'h|help'               => \$help,
+    'k|ticket-cache=s'     => \$ticket,
+    'm|mail'               => \$MAIL,
+    'q|quiet'              => \$quiet,
+    'v|version'            => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exec('perldoc', '-t', $0) or die "Cannot fork: $!";
+    exit 1;
 } elsif ($version) {
     print "volcreate-logs $VERSION\n";
-    exit 0;
+    exit 1;
 }
 if ($MAIL and not $LOGS_ADDRESS) {
-    die "\$LOGS_ADDRESS must be set in /etc/afs-admin-tools/config for -m\n";
+    die "\$LOGS_ADDRESS must be set in /etc/afs-admin-tools/config for -m";
 }
 
 # If a ticket cache was specified on the command line, obtain Kerberos tickets
 # from that cache and run aklog to get a token.
 if ($ticket) {
     require AFS::Utils;
-    $ticket = $LOGS_TICKETS . '/' . $ticket unless $ticket =~ m%^/%;
+    if (!($ticket =~ m%^/%)) {
+        $ticket = $LOGS_TICKETS . '/' . $ticket;
+    }
     $ENV{KRB5CCNAME} = $ticket;
-    AFS::Utils::setpag () or die "$0: unable to setpag: $!\n";
-    CORE::system ($AKLOG) == 0 or die "$0: unable to obtain tokens\n";
+    AFS::Utils::setpag() or die "$0: unable to setpag: $!";
+    CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens";
 }
 
 # Parse the configuration and get the current time.
 my @config = parse_config;
-my ($day, $month, $year) = (localtime)[3..5];
+my ($day, $month, $year) = (localtime)[3 .. 5];
 $month++;
 $year += 1900;
 
@@ -376,11 +477,13 @@ $year += 1900;
 # our actions to just those names.
 if (@ARGV) {
     my %names = map { $_ => 1 } @ARGV;
-    @config = grep { $names{$$_{name}} } @config;
-    unless (@ARGV == @config) {
+    @config = grep { $names{ $$_{name} } } @config;
+    if (!(@ARGV == @config)) {
         my %found = map { $$_{name} => 1 } @config;
         for (sort keys %names) {
-            warn "No configuration found for $_" unless $found{$_};
+            if (!$found{$_}) {
+                warn "No configuration found for $_";
+            }
         }
         exit 1;
     }
@@ -391,27 +494,27 @@ if (@ARGV) {
 for my $config (@config) {
     my ($path, $volume);
     if ($$config{type} eq 'monthly') {
-        ($volume, $path) = find_volume_month ($$config{path}, $month, $year);
+        ($volume, $path) = find_volume_month($$config{path}, $month, $year);
     } elsif ($$config{type} eq 'yearly') {
-        ($volume, $path) = find_volume_year ($$config{path}, $year);
+        ($volume, $path) = find_volume_year($$config{path}, $year);
     } else {
         warn "Unknown type $$config{type} for $$config{name}\n";
         next;
     }
     if ($path) {
-        check_quota ($volume, $path, $$config{quota});
+        check_quota($volume, $path, $$config{quota});
     } else {
-        create_log_volume ($year, $month, $config, $quiet);
+        create_log_volume($year, $month, $config, $quiet);
     }
     if ($day >= 20) {
         my $month = $month;
-        my $year = $year;
+        my $year  = $year;
         $month++;
         if ($month > 12) {
             $month = 1;
             $year++;
         }
-        create_log_volume ($year, $month, $config, $quiet);
+        create_log_volume($year, $month, $config, $quiet);
     }
 }
 
@@ -553,6 +656,15 @@ The default root path for ticket files, used for the B<-k> option if a
 relative path to a ticket file was given.  The default value is
 F</var/run>.
 
+=item $CELL_ROOT
+
+The root of the AFS cell.  It not specified then /afs/@cell is used.
+
+=item $LOGS_MAX_QUOTA
+
+The maximum quota value that will be set.  If not specified then
+the default value is 50G, i.e. 50 gigabytes.
+
 =item $AKLOG
 
 The full path to B<aklog>, used to obtain AFS tokens from a Kerberos
@@ -588,7 +700,7 @@ increase quota or create new log volumes as needed.  The syntax is:
         name: <volume-name>
         path: <base-path>
         type: monthly | yearly
-        quota: <quota>
+        quota: <quota>[k|m|g|t]
     }
 
 where <volume-name> is the base name of the volume (C<.YYYY> or C<.YYYYMM>
@@ -596,7 +708,7 @@ will be appended), <base-path> is the root of the log structure (its
 immediate subdirectories must be the year directories), type is either
 monthly to create a new volume for each month or yearly to create one
 volume for each year of logs, and <quota> is the starting quota for each
-volume in MB.
+volume in MB if the units are not specified.
 
 Blank lines and lines beginning with C<#> are ignored.
 
@@ -638,12 +750,15 @@ setting the $LOGS_CONFIG configuration variable.
 
 =head1 AUTHOR
 
-Russ Allbery <eagle@eyrie.org>
+Original script by Russ Allbery <eagle@eyrie.org>. Updated with
+Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 2002, 2004, 2011, 2012 The Board of Trustees of the Leland Stanford
 Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.

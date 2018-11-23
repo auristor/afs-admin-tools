@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # mvto -- Move an AFS volume from anywhere, intelligently.
 #
@@ -18,6 +18,10 @@ our $VERSION = '2.0 (2013-01-15)';
 # Copyright 1998, 1999, 2001, 2003, 2004, 2005, 2006, 2011, 2013
 #    The Board of Trustees of the Leland Stanford Junior University
 #
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
+#
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
 
@@ -35,8 +39,16 @@ use subs qw(system);
 use Date::Parse qw(str2time);
 use Getopt::Long qw(GetOptions);
 
-# This will be set to -localauth if that flag should be added to vos commands.
+# This will be set to -localauth if that flag should be added to vos
+# commands.
 our $LOCALAUTH = '';
+
+# Test to find out whether the server is OpenAFS or YFS
+our $YFS_SERVER;
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
+    $YFS_SERVER = 1;
+}
 
 ##############################################################################
 # Site configuration
@@ -63,12 +75,12 @@ if (-f '/etc/afs-admin-tools/config') {
 # We override system to honor the global $JUSTPRINT variable.  It otherwise
 # works the same way as system normally does.
 sub system {
+    print "@_\n";
     if ($JUSTPRINT) {
-        print "@_\n";
         return 0;
     } else {
-        CORE::system (@_) == 0
-            or die "$0: @_ failed (status " . ($? >> 8) . ")\n";
+        CORE::system(@_) == 0
+          or die "$0: @_ failed (status " . ($? >> 8) . ")\n";
     }
 }
 
@@ -82,17 +94,21 @@ sub system {
 # pick the least loaded of the partitions on the server from that range.
 sub findpartition {
     my ($server, $part) = @_;
-    $server = 'afssvr' . $server if ($server =~ /^\d+$/);
+    if ($server =~ /^\d+$/) {
+        $server = 'afssvr' . $server;
+    }
     $part =~ s%^/?vicep%%;
-    if ($part eq '.' || (length ($part) > 1 && $part =~ /^[a-z-]+$/)) {
-        $part = 'a-z' if $part eq '.';
-        open (INFO, "$VOS partinfo $server $LOCALAUTH |")
-            or die "$0: can't fork: $!\n";
+    if ($part eq '.' || (length($part) > 1 && $part =~ /^[a-z-]+$/)) {
+        if ($part eq '.') {
+            $part = 'a-z';
+        }
+        open(INFO, "$VOS partinfo -server $server $LOCALAUTH |")
+          or die "$0: can't fork: $!\n";
         my @free;
         local $_;
         while (<INFO>) {
             if (m%^Free space on partition (/vicep[$part]): (\d+) K %) {
-                push (@free, [ $1, $2 ]);
+                push(@free, [$1, $2]);
             } elsif (m%^Free space on partition (/vicep.)%) {
                 next;
             } else {
@@ -104,19 +120,34 @@ sub findpartition {
     } else {
         $part = "/vicep$part";
     }
-    die "$0: invalid partition $part\n" if ($part !~ m%^/vicep[a-z]$%);
+    if ($part !~ m%^/vicep[a-z]$%) {
+        die "$0: invalid partition $part\n";
+    }
     return ($server, $part);
+}
+
+sub available_space {
+    my ($server, $partition) = @_;
+    if ($YFS_SERVER) {
+        return available_space_yfs($server, $partition);
+    } else {
+        return available_space_afs($server, $partition);
+    }
+    return;
 }
 
 # Get the available space on one particular AFS partition, used as a safeguard
 # to make sure that we don't move a volume to somewhere where there isn't
 # sufficient space.  Returns the space available before the partition reaches
 # $MVTO_THRESHOLD.
-sub available_space {
+sub available_space_afs {
     my ($server, $partition) = @_;
-    return if $MVTO_THRESHOLD >= 1.0;
-    open (INFO, "$VOS partinfo $server $partition $LOCALAUTH |")
-        or die "$0: can't fork: $!\n";
+    if ($MVTO_THRESHOLD >= 1.0) {
+        return;
+    }
+    open(INFO,
+        "$VOS partinfo -server$server -partition $partition $LOCALAUTH |")
+      or die "$0: can't fork: $!\n";
     local $_;
     while (<INFO>) {
         if (m%^Free space on \S+ \S+: (\d+) K blocks out of total (\d+)%) {
@@ -130,27 +161,78 @@ sub available_space {
     die "$0: no valid output from vos partinfo\n";
 }
 
+sub available_space_yfs {
+    my ($server, $partition) = @_;
+    if ($MVTO_THRESHOLD >= 1.0) {
+        return;
+    }
+    my $free  = 0;
+    my $total = 0;
+    open(INFO,
+        "$VOS partinfo -server $server -partition $partition $LOCALAUTH |")
+      or die "$0: can't fork: $!\n";
+    local $_;
+    while (<INFO>) {
+        if (/server \s+ \S+:\d+ \s+ partition \s \S+: \s+ (\d+) \s+ (.*)/xms) {
+            $free = $1;
+            my $rest = $2;
+            if ($rest =~ /(\d+)\s*$/xms) {
+                $total = $1;
+            } else {
+                die "ERROR: free space lookup fail for $server $partition\n";
+            }
+            last;
+        } else {
+            die "$0: vos partinfo said $_";
+        }
+    }
+    close INFO;
+    if ($free == 0 && $total == 0) {
+        die("ERROR: no valid output from partinfo\n");
+    }
+    return ($free - $total * (1 - $MVTO_THRESHOLD));
+}
+
 # Given a volume name, determines various characteristics of the volume and
 # returns them in a hash.  'size' gets the volume size in KB, 'rwserver' and
 # 'rwpart' get the server and partition for the read-write volume, 'ro' gets a
 # hash of server and partition values for the replicas, 'sites' gets a count
 # of the number of sites the volume is replicated on, and 'unreleased' gets a
 # boolean value saying whether there are unreleased changes.
+#
+# There are two variants of the return.  On that supports OpenAFS servers
+# and one that supports auristor servers.
+
 sub volinfo {
-    my ($volume, $checkro) = @_;
+    my ($volume) = @_;
+    if ($YFS_SERVER) {
+        return volinfo_yfs($volume);
+    } else {
+        return volinfo_afs($volume);
+    }
+    return;
+}
+
+sub volinfo_afs {
+    my ($volume) = @_;
     my (%results, $rotime, $rwtime);
-    open (VEX, "$VOS examine $volume $LOCALAUTH |")
-        or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume $LOCALAUTH";
+    open(VEX, "$cmd |")
+      or die "$0: can't fork '$cmd' - $!\n";
     local $_;
     $results{sites} = 0;
     while (<VEX>) {
         if (/^\Q$volume\E\s+\d+ (RW|RO|BK)\s+(\d+) K\s+On-line\s*$/) {
-            die "$0: $volume is $1, not RW\n" unless $1 eq 'RW';
+            if ($1 ne 'RW') {
+                die "$0: $volume is $1, not RW\n";
+            }
             $results{size} = $2;
         } elsif (/^\s+server ([^.\s]+)\.\S+ partition (\S+) RW Site\s*/) {
-            die "$0: saw two RW sites for $volume\n" if $results{rwserver};
+            if ($results{rwserver}) {
+                die "$0: saw two RW sites for $volume\n";
+            }
             $results{rwserver} = $1;
-            $results{rwpart} = $2;
+            $results{rwpart}   = $2;
         } elsif (/^\s+server ([^.\s]+)\.\S+ partition (\S+) RO Site\s*/) {
             $results{ro}{$1} = $2;
             $results{sites}++;
@@ -160,11 +242,12 @@ sub volinfo {
         }
     }
     close VEX;
-    die "$0: unable to parse vos examine $volume\n"
-        unless ($results{rwserver} && $results{size});
+    if (!($results{rwserver} && $results{size})) {
+        die "$0: unable to parse '$cmd'\n";
+    }
     if ($results{sites}) {
-        open (VEX, "$VOS examine $volume.readonly $LOCALAUTH |")
-            or die "$0: can't fork $VOS examine for readonly: $!\n";
+        my $cmd_ro = "$VOS examine -id $volume.readonly $LOCALAUTH";
+        open(VEX, "$cmd_ro |") or die "$0: can't fork '$cmd_ro' - $!\n";
         while (<VEX>) {
             if (/^\s+Last Update (.*)/) {
                 my $tmp = $1;
@@ -177,6 +260,99 @@ sub volinfo {
     return %results;
 }
 
+# The YFS version of volinfo subroutine
+sub volinfo_yfs {
+    my ($volume) = @_;
+    my %results = ();
+
+    my $cmd = "$VOS examine -id $volume -format";
+    open(VEX, " |")
+      or die "$0: can't fork '$cmd' - $!\n";
+    local $_;
+
+    my %av = ();
+    while (<VEX>) {
+        chomp;
+        if (/^(\S+)\t(.*)/xms) {
+            my $attr = $1;
+            my $val  = $2;
+            $av{$attr} = $val;
+        }
+    }
+    close VEX;
+
+    if (!$av{'type'}) {
+        die "ERROR: unable to parse '$cmd'\n";
+    }
+    if ($av{'type'} ne 'RW') {
+        die "ERROR: volume $volume is $av{'type'}, not RW\n";
+    }
+
+    my $rw_cnt = 0;
+    for (my $i = 0 ; $i < $av{'site_count'} ; $i++) {
+        if ($av{"site_server_$i"} =~ /(\S+)\t(\S+?):(\d+)\t(.*)/xms) {
+            my $ip   = $1;
+            my $fqdn = $2;
+            my $port = $3;
+            my $id   = $4;
+            if ($av{"site_type_$i"} eq 'RW') {
+                $rw_cnt++;
+                $results{'rwserver'} = $fqdn;
+                $results{'rwpart'}   = $av{"site_partition_$i"};
+            }
+            if ($av{"site_type_$i"} eq 'RO') {
+                $results{'ro'}{$fqdn} = $av{"site_partition_$i"};
+            }
+        }
+    }
+    if ($rw_cnt > 1) {
+        die "ERROR: saw two RW sites for $volume\n";
+    }
+
+    my $rwtime = 0;
+    if ($av{'updateDate'} =~ /^(\d+)/xms) {
+        $rwtime = $1;
+    }
+    if ($av{site_count} > 1) {
+        my $rotime = update_time_yfs("${volume}.readonly");
+        if ($rwtime > $rotime) {
+            $results{'unreleased'} = $av{site_count} - 1;
+        }
+    }
+
+    $results{'sites'}  = $av{'site_count'};
+    $results{'size'}   = $av{'diskused'};
+    $results{'rwpart'} = $av{'site_partition_0'};
+
+    return %results;
+}
+
+# Get update time from a YFS volume
+
+sub update_time_yfs {
+    my ($site) = @_;
+
+    my $update_time = 0;
+    my $cmd         = "$VOS examine -id $site -format";
+    open(VEX, "$cmd |") or die "ERROR: can't fork '$cmd' - $!\n";
+    local $_;
+    my %av = ();
+    while (<VEX>) {
+        chomp;
+        if (/^(\S+)\t(.*)/xms) {
+            my $attr = $1;
+            my $val  = $2;
+            $av{$attr} = $val;
+        }
+    }
+    close VEX;
+    if ($av{'updateDate'} =~ /^(\d+)/xms) {
+        $update_time = $1;
+    }
+
+    return $update_time;
+}
+
 ##############################################################################
 # Information display
 ##############################################################################
@@ -187,8 +363,10 @@ sub volinfo {
 sub print_volinfo {
     my ($volume, $volinfo) = @_;
     print "$volume on $$volinfo{rwserver} $$volinfo{rwpart}"
-        . " ($$volinfo{size} KB)";
-    print " with unreleased changes" if $$volinfo{unreleased};
+      . " ($$volinfo{size} KB)";
+    if ($$volinfo{unreleased}) {
+        print " with unreleased changes";
+    }
     print "\n";
     for (keys %{ $$volinfo{ro} }) {
         print "  replica on $_ $$volinfo{ro}{$_}\n";
@@ -203,32 +381,43 @@ sub print_volinfo {
 # Return a command to add a site for a volume on a given server and partition.
 sub addsite {
     my ($server, $part, $volume) = @_;
-    return [ $VOS, 'addsite', $server, $part, $volume ];
+    return [
+        $VOS,         'addsite', '-server', $server,
+        '-partition', $part,     '-id',     $volume
+    ];
 }
 
 # Return a command to move a read/write volume from a given server and
 # partition to another server and partition.
 sub move {
-    my ($volume, @locations) = @_;
-    return [ $VOS, 'move', '-v', $volume, @locations ];
+    my ($volume, $from_server, $from_part, $to_server, $to_part) = @_;
+    return [
+        $VOS,          'move',       '-id',            $volume,
+        '-fromserver', $from_server, '-frompartition', $from_part,
+        '-toserver',   $to_server,   '-topartition',   $to_part,
+        '-v'
+    ];
 }
 
 # Return a command to back up a volume.
 sub backup {
     my ($volume) = @_;
-    return [ $VOS, 'backup', $volume ];
+    return [$VOS, 'backup', '-id', $volume];
 }
 
 # Return a command to remove a volume.
 sub remove {
     my ($server, $part, $volume) = @_;
-    return [ $VOS, 'remove', $server, $part, $volume ];
+    return [
+        $VOS,         'remove', '-server', $server,
+        '-partition', $part,    '-id',     $volume
+    ];
 }
 
 # Return a command to release a volume.
 sub release {
     my ($volume) = @_;
-    return [ $VOS, 'release', '-v', $volume ];
+    return [$VOS, 'release', '-v', '-id', $volume];
 }
 
 # Build the commands required to move the read/write site of a volume.  Takes
@@ -241,7 +430,7 @@ sub release {
 sub move_rw {
     my ($volume, $volinfo, @location) = @_;
     my (@commands, $needrelease);
-    my ($toserver, $topart) = findpartition (@location);
+    my ($toserver, $topart) = findpartition(@location);
     my @to = ($toserver, $topart);
     my ($fromserver, $frompart) = ($$volinfo{rwserver}, $$volinfo{rwpart});
     my @from = ($fromserver, $frompart);
@@ -258,23 +447,23 @@ sub move_rw {
         if ($ro{$toserver}) {
             delete $$volinfo{ro}{$toserver};
         } else {
-            push (@commands, addsite (@to, $volume));
+            push(@commands, addsite(@to, $volume));
             $needrelease++;
         }
     } else {
-        if (available_space (@to) < $$volinfo{size}) {
+        if (available_space(@to) < $$volinfo{size}) {
             die "$0: moving $volume would overfill @to\n";
         }
-        push (@commands, move ($volume, @from, @to));
-        push (@commands, backup ($volume));
+        push(@commands, move($volume, @from, @to));
+        push(@commands, backup($volume));
         if ($$volinfo{sites} > 0) {
             if ($ro{$toserver} && $ro{$toserver} ne $topart) {
                 my $ro = "$volume.readonly";
-                push (@commands, remove ($toserver, $ro{$toserver}, $ro));
+                push(@commands, remove($toserver, $ro{$toserver}, $ro));
                 delete $$volinfo{ro}{$toserver};
             }
             if (!$ro{$toserver} || $ro{$toserver} ne $topart) {
-                push (@commands, addsite (@to, $volume));
+                push(@commands, addsite(@to, $volume));
             }
         }
         $needrelease++;
@@ -291,23 +480,23 @@ sub move_rw {
 sub move_ros {
     my ($volume, $volinfo, @location) = @_;
     my $replicas = 1;
-    my %ro = %{ $$volinfo{ro} };
+    my %ro       = %{ $$volinfo{ro} };
     my ($needrelease, @commands);
 
     # Walk the list of replica sites.  Delete out of the replica list in
     # volinfo any that are already in the right place, and generate commands
     # to move the rest.
     while (@location) {
-        my ($server, $part) = findpartition (splice (@location, 0, 2));
+        my ($server, $part) = findpartition(splice(@location, 0, 2));
         if ($ro{$server}) {
             print "$volume is already on $server\n";
             delete $$volinfo{ro}{$server};
         } else {
-            if (available_space ($server, $part) < $$volinfo{size}) {
+            if (available_space($server, $part) < $$volinfo{size}) {
                 die "$0: adding $volume replica would overfill"
-                    . " $server $part\n";
+                  . " $server $part\n";
             }
-            push (@commands, addsite ($server, $part, $volume));
+            push(@commands, addsite($server, $part, $volume));
             $needrelease++;
         }
         $replicas++;
@@ -318,7 +507,7 @@ sub move_ros {
     if ($$volinfo{sites} > 0 && $replicas != $$volinfo{sites}) {
         my $dir = ($replicas < $$volinfo{sites}) ? 'reduce' : 'increase';
         die "$0: would $dir replication from $$volinfo{sites}"
-            . " to $replicas sites\n";
+          . " to $replicas sites\n";
     }
 
     # Return the flag and the commands.
@@ -330,39 +519,44 @@ sub move_ros {
 # actions to move the volume.
 sub move_volume {
     my ($volume, $force, @location) = @_;
-    my @rw = splice (@location, 0, 2);
+    my @rw = splice(@location, 0, 2);
     my @ro = @location;
 
     # Get and display information about the volume.
-    my %volinfo = volinfo ($volume);
-    print_volinfo ($volume, \%volinfo);
+    my %volinfo = volinfo($volume);
+    print_volinfo($volume, \%volinfo);
 
     # Make sure we're not newly replicating the volume as part of the move.
-    die "$0: replica sites given and $volume is unreplicated\n"
-        if (!$volinfo{sites} && @location > 2);
+    if (!$volinfo{sites} && @location > 2) {
+        die "$0: replica sites given and $volume is unreplicated\n";
+    }
 
     # Build the list of commands to implement the move and also set the flag
     # saying whether we need to do a volume release.
-    my ($needrelease, @commands) = move_rw ($volume, \%volinfo, @rw);
-    my @result = move_ros ($volume, \%volinfo, @ro);
-    $needrelease = shift (@result) || $needrelease;
-    push (@commands, @result);
+    my ($needrelease, @commands) = move_rw($volume, \%volinfo, @rw);
+    my @result = move_ros($volume, \%volinfo, @ro);
+    $needrelease = shift(@result) || $needrelease;
+    push(@commands, @result);
 
     # Refuse to release a volume with unreleased changes unless --force was
     # given on the command line.  Note that there is a race condition here, so
     # this check is not completely reliable (someone may have changed the
     # volume since after we ran vos examine).
     $needrelease &&= ($volinfo{sites} > 0);
-    die "$0: volume has unreleased changes, use --force to force a release\n"
-        if ($volinfo{unreleased} && $needrelease && !$force);
+    if ($volinfo{unreleased} && $needrelease && !$force) {
+        die "$0: volume has unreleased changes, "
+          . "use --force to force a release\n";
+    }
 
     # Add the volume release to the commands if necessary.
-    push (@commands, release ($volume)) if $needrelease;
+    if ($needrelease) {
+        push(@commands, release($volume));
+    }
 
     # Clean up any unwanted replicas.  All wanted replicas have already been
     # deleted out of the hash.
     for (keys %{ $volinfo{ro} }) {
-        push (@commands, remove ($_, $volinfo{ro}{$_}, "$volume.readonly"));
+        push(@commands, remove($_, $volinfo{ro}{$_}, "$volume.readonly"));
     }
 
     # Okay, run the commands.  In order to get our spacing correct, print out
@@ -386,39 +580,39 @@ sub move_volume {
 # pair for the destination, move a single site of a volume.
 sub move_single {
     my ($volume, $force, @location) = @_;
-    my @source = findpartition (splice (@location, 0, 2));
-    my @dest = findpartition (@location);
+    my @source = findpartition(splice(@location, 0, 2));
+    my @dest = findpartition(@location);
 
     # Get and display information about the volume.
-    my %volinfo = volinfo ($volume);
-    print_volinfo ($volume, \%volinfo);
+    my %volinfo = volinfo($volume);
+    print_volinfo($volume, \%volinfo);
 
     # Build commands to move the appropriate portion of the volume.
     my ($needrelease, @commands);
     if ($source[0] eq $volinfo{rwserver} && $source[1] eq $volinfo{rwpart}) {
-        if (available_space (@dest) < $volinfo{size}) {
+        if (available_space(@dest) < $volinfo{size}) {
             die "$0: moving $volume would overfill @dest\n";
         }
-        push (@commands, move ($volume, @source, @dest));
-        push (@commands, backup ($volume));
+        push(@commands, move($volume, @source, @dest));
+        push(@commands, backup($volume));
         if ($volinfo{sites} > 0) {
-            if ($volinfo{ro}{$dest[0]}) {
+            if ($volinfo{ro}{ $dest[0] }) {
                 die "$0: $volume already has a replica on on $dest[0]\n";
             }
-            push (@commands, addsite (@dest, $volume));
+            push(@commands, addsite(@dest, $volume));
             $needrelease++;
         }
-    } elsif ($volinfo{sites} > 0 && $volinfo{ro}{$source[0]}) {
-        if ($source[1] ne $volinfo{ro}{$source[0]}) {
+    } elsif ($volinfo{sites} > 0 && $volinfo{ro}{ $source[0] }) {
+        if ($source[1] ne $volinfo{ro}{ $source[0] }) {
             die "$0: $volume not on @source\n";
         }
-        if ($volinfo{ro}{$dest[0]}) {
+        if ($volinfo{ro}{ $dest[0] }) {
             die "$0: $volume already has a replica on on $dest[0]\n";
         }
-        if (available_space (@dest) < $volinfo{size}) {
-            die "$0: adding $volume replica would overfill @dest\n"
+        if (available_space(@dest) < $volinfo{size}) {
+            die "$0: adding $volume replica would overfill @dest\n";
         }
-        push (@commands, addsite (@dest, $volume));
+        push(@commands, addsite(@dest, $volume));
         $needrelease++;
     } else {
         die "$0: $volume not on @source\n";
@@ -429,15 +623,17 @@ sub move_single {
     # this check is not completely reliable (someone may have changed the
     # volume since after we ran vos examine).
     $needrelease &&= ($volinfo{sites} > 0);
-    die "$0: volume has unreleased changes, use --force to force a release\n"
-        if ($volinfo{unreleased} && $needrelease && !$force);
+    if ($volinfo{unreleased} && $needrelease && !$force) {
+        die "$0: volume has unreleased changes, "
+          . "use --force to force a release\n";
+    }
 
     # If we need a release, add that and also the removal of the old site.
     if ($needrelease) {
-        push (@commands, release ($volume));
-        if ($volinfo{ro}{$source[0]}) {
-            my $part = $volinfo{ro}{$source[0]};
-            push (@commands, remove ($source[0], $part, "$volume.readonly"));
+        push(@commands, release($volume));
+        if ($volinfo{ro}{ $source[0] }) {
+            my $part = $volinfo{ro}{ $source[0] };
+            push(@commands, remove($source[0], $part, "$volume.readonly"));
         }
     }
 
@@ -469,84 +665,98 @@ $| = 1;
 
 # Parse our options.
 my ($help, $force, $list, $location, $single, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('A|localauth'          => \$LOCALAUTH,
-            'f|force'              => \$force,
-            'h|help'               => \$help,
-            'l|list=s'             => \$list,
-            'L|location-list=s'    => \$location,
-            'n|dry-run|just-print' => \$JUSTPRINT,
-            's|single'             => \$single,
-            't|threshold=f'        => \$MVTO_THRESHOLD,
-            'v|version'            => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'A|localauth'          => \$LOCALAUTH,
+    'f|force'              => \$force,
+    'h|help'               => \$help,
+    'l|list=s'             => \$list,
+    'L|location-list=s'    => \$location,
+    'n|dry-run|just-print' => \$JUSTPRINT,
+    's|single'             => \$single,
+    't|threshold=f'        => \$MVTO_THRESHOLD,
+    'v|version'            => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $fullpath);
+    exec('perldoc', '-t', $fullpath);
+    exit 1;
 } elsif ($version) {
     print "mvto $VERSION\n";
-    exit 0;
+    exit 1;
 }
-$LOCALAUTH = '-localauth' if $LOCALAUTH;
+if ($LOCALAUTH) {
+    $LOCALAUTH = '-localauth';
+}
 
 # Volume name is always the first argument unless -l or -L was given, and the
 # rest of our arguments must be server and partition pairs.
 my $volume;
-unless ($list || $location) {
-    usage if (@ARGV < 3);
+if (!($list || $location)) {
+    if (@ARGV < 3) {
+        usage();
+    }
     $volume = shift;
 }
-usage if (@ARGV % 2 != 0);
+if (@ARGV % 2 != 0) {
+    usage();
+}
 
 # It doesn't make sense to combine -l and -L.
-die "$0: both -l and -L may not be specified at the same time\n"
-    if ($list && $location);
+if ($list && $location) {
+    die "$0: both -l and -L may not be specified at the same time\n";
+}
 
 # If -L is given, there should be no other command-line arguments.
-die "Usage: $0 [-Afns] [-t <threshold>] -L <list>\n"
-    if ($location && @ARGV > 0);
+if ($location && @ARGV > 0) {
+    die "Usage: $0 [-Afns] [-t <threshold>] -L <list>\n";
+}
 
 # If -s was given, there must be exactly four arguments left, a pair giving
 # the current server and partition, and a pair saying where that replica of
 # the volume should be moved to.
-die "Usage: $0 [-A] -s (-l <list> | <vol>) <server> <part> <server> <part>\n"
-    if ($single && @ARGV != 4 && !$location);
+if ($single && @ARGV != 4 && !$location) {
+    die "Usage: $0 [-A] -s (-l <list> | <vol>) "
+      . "<server> <part> <server> <part>\n";
+}
 
 # Do the work.  If -l or -L was given, this means looping on the volumes
 # listed in that file; otherwise, just move the single volume.
 $list ||= $location;
 if ($list) {
-    open (LIST, $list) or die "$0: cannot open $list: $!\n";
+    open(LIST, $list) or die "$0: cannot open $list: $!\n";
     my @volumes = <LIST>;
     close LIST;
     for (@volumes) {
         s/\s+$//;
     }
     my $total = scalar @volumes;
-    my $i = 0;
+    my $i     = 0;
     for (@volumes) {
         $i++;
         my ($volume, @where);
         if ($location) {
-            ($volume, @where) = split (' ', $_);
+            ($volume, @where) = split(' ', $_);
         } else {
             $volume = $_;
-            @where = @ARGV;
+            @where  = @ARGV;
         }
         print "MOVING $volume ($i of $total)\n\n";
         if ($single) {
-            move_single ($volume, $force, @where);
+            move_single($volume, $force, @where);
         } else {
-            move_volume ($volume, $force, @where);
+            move_volume($volume, $force, @where);
         }
         print "\n";
-        print "\n" unless ($i == $total);
+        if ($i != $total) {
+            print "\n";
+        }
     }
     print "FINISHED $list\n";
 } else {
     if ($single) {
-        move_single ($volume, $force, @ARGV);
+        move_single($volume, $force, @ARGV);
     } else {
-        move_volume ($volume, $force, @ARGV);
+        move_volume($volume, $force, @ARGV);
     }
 }
 
@@ -840,10 +1050,14 @@ without removing one of the other RO sites.
 Russ Allbery <eagle@eyrie.org>, based on a much simpler script by Neil
 Crellin <neilc@stanford.edu> that only handled unreplicated volumes.
 
+Bill MacAllister <bill@ca-zephyr.org>, modifications to support Auristor.
+
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1998, 1999, 2001, 2003, 2004, 2005, 2011 The Board of Trustees of
 the Leland Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>.
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.
@@ -856,8 +1070,9 @@ L<vos_examine(1)>, L<vos_move(1)>, L<vos_release(1)>, L<vos_remove(1)>
 B<krenew> is part of the kstart package, which is available at
 L<http://www.eyrie.org/~eagle/software/kstart/>.
 
-This script is part of the afs-admin-tools package.  The most recent
-version is available from the afs-admin-tools web page at
-L<http://www.eyrie.org/~eagle/software/afs-admin-tools/>.
+This script is part of the afs-admin-tools package.  The original Russ
+Allbery version is available is available from the afs-admin-tools web
+page at L<http://www.eyrie.org/~eagle/software/afs-admin-tools/>.
 
+This version is available from L<https://github.com/auristor/afs-admin-tools>.
 =cut

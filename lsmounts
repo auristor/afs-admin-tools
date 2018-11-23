@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # lsmounts -- List mountpoints found in a directory.
 #
@@ -11,6 +11,10 @@ our $VERSION = '2.0 (2013-01-15)';
 # Modifications by Russ Allbery <eagle@eyrie.org>
 # Copyright 1998, 1999, 2003, 2004, 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -26,6 +30,17 @@ use warnings;
 use Cwd qw(cwd);
 use File::Find qw(find);
 use Getopt::Long qw(GetOptions);
+
+my $count;
+my $deep;
+my $help;
+my $list;
+my $load;
+my $quiet;
+my $recurse;
+my $version;
+
+my %seen;
 
 ##############################################################################
 # Site configuration
@@ -51,21 +66,63 @@ if (-f '/etc/afs-admin-tools/config') {
 # undef if it is not a mount point.
 sub lsmount {
     my ($path) = @_;
-    my $pid = open (LSMOUNT, '-|');
+    my $pid = open(LSMOUNT, '-|');
     if (!defined $pid) {
         die "$0: cannot fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
-        exec ($FS, 'lsmount', $path)
-            or die "$0: cannot exec $FS lsmount for $path: $!\n";
+        open(STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
+        exec($FS, 'lsmount', $path)
+          or die "$0: cannot exec $FS lsmount for $path: $!\n";
     }
     local $/;
     my $output = <LSMOUNT>;
     close LSMOUNT;
-    return if ($? != 0);
-    my ($name) =
-        ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
+    if ($? != 0) {
+        return;
+    }
+    my ($name)
+      = ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
     return $name;
+}
+
+# The sub that does all the work.  Takes in the name of a file, checks to
+# see if it's a directory, and if so checks to see if it's a mount point.
+# It maintains a cache of mount points seen and sets $File::Find::prune if
+# it's seen a given mount point before; this will have no effect if we're
+# not recursive.  An optional second argument is the correct path to the
+# file, if the first argument is relative to a changing working directory.
+sub check {
+    my ($file, $path) = @_;
+    $path ||= $file;
+    if (!(lstat $file && -d _)) {
+        return;
+    }
+    $count++;
+    if (!$quiet && $count % 1000 == 0) {
+        print "$count directories examined\n";
+    }
+    my $volume = lsmount $file;
+    if (defined $volume) {
+        if (!$recurse) {
+            $File::Find::prune = 1;
+        }
+        if ($list) {
+            print "$volume\n";
+        } else {
+            printf("%-22s (%s)\n", $volume, $path);
+        }
+        if ($load && $volume !~ /\.(backup|readonly)$/) {
+            system($LOADMTPT, $file);
+        }
+        if ($volume =~ /\.backup$/) {
+            $File::Find::prune = 1;
+        }
+        if ($seen{$volume}) {
+            $File::Find::prune = 1;
+        } else {
+            $seen{$volume}++;
+        }
+    }
 }
 
 ##############################################################################
@@ -75,67 +132,39 @@ sub lsmount {
 # Parse our options.
 my $fullpath = $0;
 $0 =~ s%.*/%%;
-my ($help, $list, $load, $quiet, $deep, $recurse, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('h|help'         => \$help,
-            'L|load'         => \$load,
-            'l|list'         => \$list,
-            'q|quiet'        => \$quiet,
-            'R|recurse'      => \$recurse,
-            'r|safe-recurse' => \$deep,
-            'v|version'      => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'h|help'         => \$help,
+    'L|load'         => \$load,
+    'l|list'         => \$list,
+    'q|quiet'        => \$quiet,
+    'R|recurse'      => \$recurse,
+    'r|safe-recurse' => \$deep,
+    'v|version'      => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $fullpath);
+    exec('perldoc', '-t', $fullpath);
+    exit 1;
 } elsif ($version) {
     print "lsmounts $VERSION\n";
-    exit 0;
+    exit 1;
 }
-die "$0: only at most one of -R or -r should be given\n"
-    if ($deep && $recurse);
-
-# The sub that does all the work.  Takes in the name of a file, checks to
-# see if it's a directory, and if so checks to see if it's a mount point.
-# It maintains a cache of mount points seen and sets $File::Find::prune if
-# it's seen a given mount point before; this will have no effect if we're
-# not recursive.  An optional second argument is the correct path to the
-# file, if the first argument is relative to a changing working directory.
-my ($count, %seen);
-sub check {
-    my ($file, $path) = @_;
-    $path ||= $file;
-    return unless (lstat $file && -d _);
-    $count++;
-    print "$count directories examined\n" if (!$quiet && $count % 1000 == 0);
-    my $volume = lsmount $file;
-    if (defined $volume) {
-        $File::Find::prune = 1 unless $recurse;
-        if ($list) {
-            print "$volume\n";
-        } else {
-            printf ("%-22s (%s)\n", $volume, $path);
-        }
-        system ($LOADMTPT, $file)
-            if ($load && $volume !~ /\.(backup|readonly)$/);
-        $File::Find::prune = 1 if $volume =~ /\.backup$/;
-        if ($seen{$volume}) {
-            $File::Find::prune = 1;
-        } else {
-            $seen{$volume}++;
-        }
-    }
+if ($deep && $recurse) {
+    die "$0: only at most one of -R or -r should be given\n";
 }
 
 # If we're recursive, take @ARGV as a list of directories to recurse into.
 # Otherwise, take it as a list of directories and files to test.
-@ARGV = ('.') unless @ARGV;
+if (!@ARGV) {
+    @ARGV = ('.');
+}
 if ($recurse || $deep) {
     $File::Find::dont_use_nlink = 1;
-    find (sub { check ($_, $File::Find::name) }, @ARGV);
+    find(sub { check($_, $File::Find::name) }, @ARGV);
 } else {
     @ARGV = map {
         my $dir = $_;
-        opendir (D, $dir) or die "$0: can't open directory $dir: $!\n";
+        opendir(D, $dir) or die "$0: can't open directory $dir: $!\n";
         my @files = map { "$dir/$_" } grep { $_ !~ /^\.\.?$/ } readdir D;
         closedir D;
         @files;
@@ -295,10 +324,14 @@ human-readable output, allow multiple command-line arguments for the
 non-recursive case, and add the ability to run loadmtpt on discovered
 volumes.
 
+Updated with Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
+
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1998, 1999, 2003, 2004, 2011 The Board of Trustees of the Leland
 Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.

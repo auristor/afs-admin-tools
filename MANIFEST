@@ -7,7 +7,9 @@ mvto
 NEWS
 partinfo
 README
+t/help.t
 t/minimum-version.t
+t/perltidy.t
 t/pod-spelling.t
 t/pod.t
 t/strict.t

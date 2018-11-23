@@ -21,7 +21,12 @@ WriteMakefile(
     VERSION_FROM     => 'VERSION',
     MIN_PERL_VERSION => 5.006,
     dist             => { COMPRESS => 'gzip', SUFFIX => 'gz' },
-
+    BUILD_REQUIRES   => {
+      'Test::MinimumVersion' => '0.1',
+      'Test::Pod'            => '1.51',
+      'Test::Strict'         => '0.39'
+    },
+    
     # ExtUtils::MakeMaker only understands this with Perl 5.10 or later.
     ## no critic (ValuesAndExpressions::ProhibitMagicNumbers)
     ($] >= 5.010 ? (LICENSE => 'perl') : ()),
