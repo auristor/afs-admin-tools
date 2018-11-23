@@ -1,5 +1,11 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.2 (2018-11-23)
+
+    Update scripts to support Auristor as well as AFS.  Re-format
+    scripts to follow Perl standards used by the Infrastructure
+    Delivery Group at Stanford.
+    
 afs-admin-tools 2.1 (unreleased)
 
     Add a new -A option to mvto, which uses -localauth for all vos

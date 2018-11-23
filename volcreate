@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # volcreate -- Create a volume, mount and set acl and quota
 #
@@ -11,6 +11,10 @@ our $VERSION = '2.0 (2013-01-15)';
 #        and Russ Allbery <eagle@eyrie.org>
 # Copyright 1998, 1999, 2000, 2002, 2004, 2005, 2011, 2012, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -27,6 +31,8 @@ use vars qw($JUSTPRINT);
 use subs qw(system);
 
 use Getopt::Long qw(GetOptions);
+
+my ($clone, $help, $quiet, $replicas, $type, $version);
 
 ##############################################################################
 # Site configuration
@@ -75,7 +81,7 @@ sub system {
         print "@_\n";
         return 0;
     } else {
-        return CORE::system (@_);
+        return CORE::system(@_);
     }
 }
 
@@ -96,9 +102,11 @@ sub find_targets {
     # server and partition.
     if (@locations == 1 && $locations[0][1] =~ /^[a-z]$/) {
         my ($server, $partition) = @{ $locations[0] };
-        $server = 'afssvr' . $server if ($server =~ /^\d+$/);
+        if ($server =~ /^\d+$/) {
+            $server = 'afssvr' . $server;
+        }
         $partition =~ s%^(?:/?vicep)?%/vicep%;
-        return [ $server, $partition ];
+        return [$server, $partition];
     }
 
     # The normal case, where we need to go looking at current server usage to
@@ -106,15 +114,33 @@ sub find_targets {
     while (@locations) {
         my ($server, $part) = @{ shift @locations };
 
-        $server = 'afssvr' . $server if ($server =~ /^\d+$/);
-        $part = 'a-z' if $part eq '.';
-        open (INFO, "$VOS partinfo $server |") or die "$0: can't fork: $!\n";
+        if ($server =~ /^\d+$/) {
+            $server = 'afssvr' . $server;
+        }
+        if ($part eq '.') {
+            $part = 'a-z';
+        }
+        open(INFO, "$VOS partinfo -server $server |")
+          or die "$0: can't fork: $!\n";
         my @free;
         local $_;
         while (<INFO>) {
-            if (m(^Free\ space\ on\ partition\ (/vicep[$part]):\ (\d+)\ K
-                  \ blocks\ out\ of\ total\ (\d+)\s*\z)x) {
-                push (@free, [ $1, $2, $2 / $3 ]);
+            if (
+                m(^Free\ space\ on\ partition\ (/vicep[$part]):\ (\d+)\ K
+                  \ blocks\ out\ of\ total\ (\d+)\s*\z)x
+              )
+            {
+                my ($part, $free, $totl) = ($1, $2, $3);
+                push(@free, [$part, $free, $free / $totl]);
+            } elsif (
+                m%^Free \s+ space \s+ on \s+ server \s+ (\S+)
+                    \s+ partition \s+ (/vicep\S+):
+                    \s+ (\d+) \s+ K \s+ blocks
+                    \s+ out \s+ of \s+ total \s+ (\d+)$%xms
+              )
+            {
+                my ($server, $part, $free, $totl) = ($1, $2, $3, $4);
+                push(@free, [$part, $free, $free / $totl]);
             } elsif (m%^Free space on partition (/vicep.)%) {
                 next;
             } else {
@@ -122,12 +148,14 @@ sub find_targets {
             }
         }
         close INFO;
-        if (!@free) { die "$0: no partition matching $part on $server\n" }
+        if (!@free) {
+            die "$0: no partition matching $part on $server\n";
+        }
         @free = sort { $$b[1] <=> $$a[1] } @free;
-        push (@results, map { [ $server, $$_[0], $$_[2] ] } @free);
+        push(@results, map { [$server, $$_[0], $$_[2]] } @free);
     }
     @results = sort { $$b[2] <=> $$a[2] } @results;
-    return map { [ $$_[0], $$_[1] ] } @results;
+    return map { [$$_[0], $$_[1]] } @results;
 }
 
 # Given a volume type for an unreplicated volume, look through the types file
@@ -136,20 +164,26 @@ sub find_targets {
 sub find_best_normal {
     my $type = shift;
     my @locations;
-    open (SERVERS, $SERVERS) or die "$0: can't open $SERVERS: $!\n";
+    open(SERVERS, $SERVERS) or die "$0: can't open $SERVERS: $!\n";
     local $_;
     while (<SERVERS>) {
-        next if /^\s*$/;
-        next if /^\s*\#/;
+        if (/^\s*$/) {
+            next;
+        }
+        if (/^\s*\#/) {
+            next;
+        }
         my ($server, @rules) = split;
-        shift @rules if ($rules[0] =~ /^\[.*\]$/);
+        if ($rules[0] =~ /^\[.*\]$/) {
+            shift @rules;
+        }
         my $parts = '';
         for (@rules) {
             my ($part, $allowed);
             if (/:/) {
                 ($part, $allowed) = split ':';
             } else {
-                $part = 'a-z';
+                $part    = 'a-z';
                 $allowed = $_;
             }
             if ($allowed eq $type) {
@@ -157,7 +191,7 @@ sub find_best_normal {
             }
         }
         if ($parts) {
-            push (@locations, [ $server, $parts ]);
+            push(@locations, [$server, $parts]);
         }
     }
     close SERVERS;
@@ -165,7 +199,7 @@ sub find_best_normal {
         die "$0: no servers found for type $type\n";
     }
     my @result = find_targets @locations;
-    return @{ $result[int rand (scalar (@result) * $VOLCREATE_CUTOFF)] };
+    return @{ $result[int rand(scalar(@result) * $VOLCREATE_CUTOFF)] };
 }
 
 # Given a volume type for a replicated volume and the number of replicas, look
@@ -177,11 +211,15 @@ sub find_best_normal {
 sub find_best_replicated {
     my ($type, $replicas) = @_;
     my (@rw, @ro, %servers);
-    open (SERVERS, $SERVERS) or die "$0: can't open $SERVERS: $!\n";
+    open(SERVERS, $SERVERS) or die "$0: can't open $SERVERS: $!\n";
     local $_;
     while (<SERVERS>) {
-        next if /^\s*$/;
-        next if /^\s*\#/;
+        if (/^\s*$/) {
+            next;
+        }
+        if (/^\s*\#/) {
+            next;
+        }
         my ($server, @rules) = split;
         my $site;
         if ($rules[0] =~ /^\[(.*)\]$/) {
@@ -195,7 +233,7 @@ sub find_best_replicated {
             if (/:/) {
                 ($part, $allowed) = split ':';
             } else {
-                $part = 'a-z';
+                $part    = 'a-z';
                 $allowed = $_;
             }
             if ($allowed eq "$type-rw") {
@@ -206,11 +244,11 @@ sub find_best_replicated {
         }
         if ($rwparts) {
             $servers{$server} = $site;
-            push (@rw, [ $server, $rwparts ]);
+            push(@rw, [$server, $rwparts]);
         }
         if ($roparts) {
             $servers{$server} = $site;
-            push (@ro, [ $server, $roparts ]);
+            push(@ro, [$server, $roparts]);
         }
     }
     close SERVERS;
@@ -219,21 +257,26 @@ sub find_best_replicated {
     }
     my @locations;
     my @targets = find_targets @rw;
-    push (@locations,
-          $targets[int rand (scalar (@targets) * $VOLCREATE_CUTOFF)]);
+    push(@locations, $targets[int rand(scalar(@targets) * $VOLCREATE_CUTOFF)]);
     my %sites = map { $_ => 1 } values %servers;
     for my $site (keys %sites) {
-        last if @locations >= $replicas;
-        next if $site eq $servers{$locations[0][0]};
-        my @candidates = grep { $servers{$$_[0]} eq $site } @ro;
-        next unless @candidates;
-        push (@locations, (find_targets @candidates)[0]);
+        if (@locations >= $replicas) {
+            last;
+        }
+        if ($site eq $servers{ $locations[0][0] }) {
+            next;
+        }
+        my @candidates = grep { $servers{ $$_[0] } eq $site } @ro;
+        if (!@candidates) {
+            next;
+        }
+        push(@locations, (find_targets @candidates)[0]);
     }
     my $found = @locations;
     if ($found < $replicas) {
         my %locations = map { @$_ } @locations;
-        @ro = grep { !$locations{$$_[0]} } @ro;
-        push (@locations, (find_targets @ro)[0 .. ($replicas - $found - 1)]);
+        @ro = grep { !$locations{ $$_[0] } } @ro;
+        push(@locations, (find_targets @ro)[0 .. ($replicas - $found - 1)]);
     }
     return @locations;
 }
@@ -246,10 +289,14 @@ sub find_best_replicated {
 # on a failure to create the volume.
 sub volume_create {
     my ($server, $partition, $volume, $quota) = @_;
-    system ($VOS, 'create', $server, $partition, $volume, $quota * 1000) == 0
-        or die 'Failed to create volume (status ', ($? >> 8), ")\n";
-    system ($VOS, 'backup', $volume) == 0
-        or die 'Failed to backup volume (status ', ($? >> 8), ")\n";
+    system($VOS, 'create', '-server', $server,
+        '-partition', $partition, '-name', $volume,
+        '-maxquota',  $quota * 1000
+      ) == 0
+      or die 'Failed to create volume (status ', ($? >> 8), ")\n";
+    system($VOS, 'backup', '-id', $volume) == 0
+      or die 'Failed to backup volume (status ', ($? >> 8), ")\n";
+    return;
 }
 
 # Clone a volume, given the server, partition, and volume name to use for the
@@ -257,15 +304,18 @@ sub volume_create {
 sub volume_clone {
     my ($server, $partition, $new, $old) = @_;
     require File::Temp;
-    my ($fh, $filename) = File::Temp::tempfile (undef, UNLINK => 1);
+
+    my ($fh, $filename) = File::Temp::tempfile(undef, UNLINK => 1);
     print "Dumping volume $old\n";
-    system ($VOS, 'dump', '-id', $old, '-file', $filename) == 0
-        or die "$0: failed to dump volume $old (status ", ($? >> 8), ")\n";
+    system($VOS, 'dump', '-id', $old, '-file', $filename) == 0
+      or die "$0: failed to dump volume $old (status ", ($? >> 8), ")\n";
     print "Restoring $new from ", $filename, "\n";
-    system ($VOS, 'restore', '-server', $server, '-partition', $partition,
-            '-name', $new, '-file', $filename) == 0
-        or die "$0: failed to create volume $new (status ", ($? >> 8), ")\n";
+    system($VOS, 'restore', '-server', $server, '-partition',
+        $partition, '-name', $new, '-file', $filename
+      ) == 0
+      or die "$0: failed to create volume $new (status ", ($? >> 8), ")\n";
     close $fh;
+    return;
 }
 
 # Mount the volume, chmod it to 755 since AFS creates it 777, and load the
@@ -273,16 +323,16 @@ sub volume_clone {
 # AFS creates it 777.
 sub volume_mount {
     my ($volume, $mtpt) = @_;
-    system ($FS, 'mkm', $mtpt, $volume) == 0
-        or die 'Failed to make mount point (status ', ($? >> 8), ")\n";
+    system($FS, 'mkmount', '-dir', $mtpt, '-vol', $volume) == 0
+      or die 'Failed to make mount point (status ', ($? >> 8), ")\n";
     if ($JUSTPRINT) {
         print "chmod 755 $mtpt\n";
     } else {
-        chmod (0755, $mtpt) or warn "Failed to chmod root: $!\n";
+        chmod(0755, $mtpt) or warn "Failed to chmod root: $!\n";
     }
     if ($LOADMTPT) {
-        system ($LOADMTPT, $mtpt) == 0
-            or warn 'Failed to load mountpoint (status ', ($? >> 8), ")\n";
+        system($LOADMTPT, $mtpt) == 0
+          or warn 'Failed to load mountpoint (status ', ($? >> 8), ")\n";
     }
 }
 
@@ -293,12 +343,16 @@ sub volume_setacls {
 
     # Find any extra ACLs that apply to this volume.
     my @extra;
-    if (open (ACLS, $ACLS)) {
+    if (open(ACLS, $ACLS)) {
         local $_;
         my $found = 0;
         while (<ACLS>) {
-            next if /^\s+\#/;
-            next if /^\s*$/;
+            if (/^\s+\#/) {
+                next;
+            }
+            if (/^\s*$/) {
+                next;
+            }
             if (m%^/(.*)/\s*$%) {
                 my $regex = $1;
                 $found = ($volume =~ /$regex/);
@@ -308,7 +362,7 @@ sub volume_setacls {
                     warn "$0: syntax error on line $. of $ACLS\n";
                     next;
                 }
-                push (@extra, $user, $acl);
+                push(@extra, $user, $acl);
             }
         }
         close ACLS;
@@ -317,11 +371,11 @@ sub volume_setacls {
     }
 
     # Append the extra ACLs that apply to this volume.
-    push (@acls, @extra);
+    push(@acls, @extra);
 
     # Actually set the ACLs.
-    system ($FS, 'setacl', $mtpt, @acls) == 0
-        or warn 'Failed to set acls (status ', ($? >> 8), ")\n";
+    system($FS, 'setacl', '-path', $mtpt, '-acl', @acls) == 0
+      or warn 'Failed to set acls (status ', ($? >> 8), ")\n";
 }
 
 # Given the volume name and then a list of server and partition pairs, create
@@ -332,12 +386,13 @@ sub volume_replicate {
     my ($volume, @locations) = @_;
     while (@locations) {
         my ($server, $partition) = @{ shift @locations };
-        system ($VOS, 'addsite', $server, $partition, $volume) == 0
-            or die "Failed to replicate volume to $server $partition",
-                ' (status ', ($? >> 8), ")\n";
+        system($VOS, 'addsite', '-server', $server, '-partition', $partition,
+            '-id', $volume) == 0
+          or die "Failed to replicate volume to $server $partition",
+          ' (status ', ($? >> 8), ")\n";
     }
-    system ($VOS, 'release', '-f', $volume) == 0
-        or die 'Failed to release volume (status ', ($? >> 8), ")\n";
+    system($VOS, 'release', '-id', $volume, '-force') == 0
+      or die 'Failed to release volume (status ', ($? >> 8), ")\n";
 }
 
 ##############################################################################
@@ -350,24 +405,27 @@ $0 =~ s%.*/%%;
 
 # Parse command line options.  We do allow an odd number of arguments for
 # ACLs, in order to allow things like -clear.
-my ($clone, $help, $quiet, $replicas, $type, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case', 'require_order');
-GetOptions ('c|clone=s'            => \$clone,
-            'h|help'               => \$help,
-            'q|quiet'              => \$quiet,
-            'n|dry-run|just-print' => \$JUSTPRINT,
-            'p|proportion=f'       => \$VOLCREATE_CUTOFF,
-            'r|replicas=i'         => \$replicas,
-            't|type=s'             => \$type,
-            'v|version'            => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case', 'require_order');
+GetOptions(
+    'c|clone=s'            => \$clone,
+    'h|help'               => \$help,
+    'q|quiet'              => \$quiet,
+    'n|dry-run|just-print' => \$JUSTPRINT,
+    'p|proportion=f'       => \$VOLCREATE_CUTOFF,
+    'r|replicas=i'         => \$replicas,
+    't|type=s'             => \$type,
+    'v|version'            => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exit 1;
 } elsif ($version) {
     print "volcreate $VERSION\n";
-    exit 0;
+    exit 1;
 }
-if ($replicas && !$type) { die "-r option given without -t option\n" }
+if ($replicas && !$type) {
+    die "-r option given without -t option\n";
+}
 if ($VOLCREATE_CUTOFF > 1 || $VOLCREATE_CUTOFF < 0) {
     die "-p value must be between 0 and 1\n";
 }
@@ -375,29 +433,31 @@ $replicas ||= 0;
 
 # If quiet operation was requested, cheat by rerouting stdout to /dev/null.
 if ($quiet) {
-    open (STDOUT, '> /dev/null')
-        or die "$0: cannot redirect stdout to /dev/null: $!\n";
+    open(STDOUT, '> /dev/null')
+      or die "$0: cannot redirect stdout to /dev/null: $!\n";
 }
 
 # Fill in the various information that we need.
 my ($server, $partition, $volume, $quota, $mtpt, @acls);
 if ($type) {
-    die "Usage: volcreate -t type volname quota mountpoint [acls]\n"
-        if @ARGV < 3;
+    if (@ARGV < 3) {
+        die "Usage: volcreate -t type volname quota mountpoint [acls]\n";
+    }
     if ($type =~ /-r[wo]$/) {
         die "Type ends in -ro or -rw (maybe you meant to use the -r flag?)\n";
     }
     ($volume, $quota, $mtpt, @acls) = @ARGV;
 } else {
-    die "Usage: volcreate server partition volname quota mtpt [acls]\n"
-        if (@ARGV < 5);
+    if (@ARGV < 5) {
+        die "Usage: volcreate server partition volname quota mtpt [acls]\n";
+    }
     ($server, $partition, $volume, $quota, $mtpt, @acls) = @ARGV;
 }
 
 # Ensure that the mount point starts with $VOLCREATE_MOUNT_PREFIX, if set.
 # This is also useful for ensuring that the arguments weren't given in the
 # wrong order and no argument was missing.
-if (defined ($VOLCREATE_MOUNT_PREFIX) and $LOADMTPT) {
+if (defined($VOLCREATE_MOUNT_PREFIX) and $LOADMTPT) {
     my $prefix = $VOLCREATE_MOUNT_PREFIX;
     if ($mtpt !~ m,^\Q$prefix\E,) {
         my $try = $mtpt;
@@ -416,11 +476,14 @@ $mtpt =~ s%/+$%%;
 
 # Make sure the parent directory of the mount point exists and the mount point
 # doesn't already exist.
-die "Mount point $mtpt already exists\n" if -e $mtpt;
+if (-e $mtpt) {
+    die "Mount point $mtpt already exists\n";
+}
 my $parent = $mtpt;
 if ($parent =~ s%/[^/]+$%%) {
-    die "Parent directory of mount point $mtpt doesn't exist\n"
-        unless -d $parent;
+    if (!-d $parent) {
+        die "Parent directory of mount point $mtpt doesn't exist\n";
+    }
 }
 
 # Canonify AFS server name and find the exact partition on which to create the
@@ -428,32 +491,34 @@ if ($parent =~ s%/[^/]+$%%) {
 my @ros;
 if ($type) {
     if ($replicas) {
-        @ros = find_best_replicated ($type, $replicas);
+        @ros = find_best_replicated($type, $replicas);
         ($server, $partition) = @{ $ros[0] };
     } else {
-        ($server, $partition) = find_best_normal ($type);
+        ($server, $partition) = find_best_normal($type);
     }
 } else {
-    ($server, $partition) = @{ (find_targets [ $server, $partition ])[0] };
+    ($server, $partition) = @{ (find_targets [$server, $partition])[0] };
 }
 
 # Do the work of creating and mounting the read/write volume.
 if ($clone) {
-    volume_clone ($server, $partition, $volume, $clone);
+    volume_clone($server, $partition, $volume, $clone);
 } else {
-    volume_create ($server, $partition, $volume, $quota);
+    volume_create($server, $partition, $volume, $quota);
 }
-volume_mount ($volume, $mtpt);
-unless ($clone) {
-    volume_setacls ($volume, $mtpt, @acls);
+volume_mount($volume, $mtpt);
+if (!$clone) {
+    volume_setacls($volume, $mtpt, @acls);
 }
 
 # If the volume is replicated, take care of creating and releasing the
 # replicas now that the ACL is set correctly.
 if ($replicas && $replicas > 0) {
-    volume_replicate ($volume, @ros);
+    volume_replicate($volume, @ros);
 }
+
 exit 0;
+
 __END__
 
 ##############################################################################
@@ -772,11 +837,14 @@ overridden with the $ACLS configuration variable.
 =head1 AUTHORS
 
 Neil Crellin <neilc@stanford.edu> and Russ Allbery <eagle@eyrie.org>.
+Updated with Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1998, 1999, 2000, 2002, 2004, 2005, 2011 The Board of Trustees
 of the Leland Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.

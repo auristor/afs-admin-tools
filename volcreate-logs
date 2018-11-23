@@ -1,11 +1,15 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # volcreate-logs -- Create and grant quota to log volumes in AFS.
 #
 # Written by Russ Allbery <eagle@eyrie.org>
 # Copyright 2002, 2004, 2011, 2012, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -70,7 +74,7 @@ sub system {
         print "@_\n";
         return 0;
     } else {
-        return CORE::system (@_);
+        return CORE::system(@_);
     }
 }
 
@@ -82,9 +86,9 @@ sub system {
 sub start_mail {
     my ($sendmail) = grep { -x $_ } qw(/usr/sbin/sendmail /usr/lib/sendmail);
     $sendmail ||= '/usr/lib/sendmail';
-    my $date = strftime ("%Y-%m-%d", localtime);
-    open (MAIL, "| $sendmail -t -oi -oem")
-        or die "Cannot fork $sendmail: $!\n";
+    my $date = strftime("%Y-%m-%d", localtime);
+    open(MAIL, "| $sendmail -t -oi -oem")
+      or die "Cannot fork $sendmail: $!\n";
     print MAIL "To: $LOGS_ADDRESS\n";
     print MAIL "Subject: Log volume report ($date)\n";
     print MAIL "\n";
@@ -96,7 +100,9 @@ sub start_mail {
 # message.
 sub report {
     if ($MAIL) {
-        start_mail unless $MAILOPEN;
+        if (!$MAILOPEN) {
+            start_mail;
+        }
         print MAIL @_;
     } else {
         print @_;
@@ -126,8 +132,8 @@ sub check_quota {
         return;
     }
     shift @listquota;
-    my ($volname, $quota, $used, $percent) = split (' ', $listquota[0]);
-    unless ($percent =~ s/%(<\<)?$//) {
+    my ($volname, $quota, $used, $percent) = split(' ', $listquota[0]);
+    if (!($percent =~ s/%(<\<)?$//)) {
         warn "Unable to parse: $listquota[0]";
         warn "Unable to get quota information for $volume\n";
         return;
@@ -135,13 +141,15 @@ sub check_quota {
 
     # Figure out if we need to do anything.
     my $newquota = $quota;
-    $newquota = int (($quota / 10000) * 1.1 + 0.9) * 10000 if ($percent > 90);
+    if ($percent > 90) {
+        $newquota = int(($quota / 10000) * 1.1 + 0.9) * 10000;
+    }
     $newquota = $minimum if ($newquota < $minimum);
     if ($newquota != $quota) {
         report "Setting quota to ", $newquota / 1000, "MB for $volume\n";
-        if (system ($FS, 'setquota', $mountpoint, $newquota) != 0) {
+        if (system($FS, 'setquota', $mountpoint, $newquota) != 0) {
             warn "$FS setquota $mountpoint $newquota exited with status ",
-                ($? >> 8), "\n";
+              ($? >> 8), "\n";
             warn "Unable to set quota for $volume\n";
         }
     }
@@ -171,10 +179,10 @@ sub lsmount {
 # the volume name in a list.
 sub find_volume_month {
     my ($base, $month, $year) = @_;
-    $month = sprintf ("%02d", $month);
+    $month = sprintf("%02d", $month);
     my ($volume, $path);
     if (-d "$base/$year/$month") {
-        $volume = lsmount ("$base/$year/$month");
+        $volume = lsmount("$base/$year/$month");
         $path = "$base/$year/$month" if defined $volume;
     }
     return ($volume, $path);
@@ -187,8 +195,10 @@ sub find_volume_year {
     my ($base, $year) = @_;
     my ($volume, $path);
     if (-d "$base/$year") {
-        $volume = lsmount ("$base/$year");
-        $path = "$base/$year" if defined $volume;
+        $volume = lsmount("$base/$year");
+        if (defined $volume) {
+            $path = "$base/$year";
+        }
     }
     return ($volume, $path);
 }
@@ -212,17 +222,21 @@ sub create_volume {
         warn "$volume not created: $mountpoint already exists\n";
         return;
     }
-    if (!$JUSTPRINT && system ("$VOS examine $volume >/dev/null 2>&1") == 0) {
+    if (!$JUSTPRINT
+        && system("$VOS examine -id $volume >/dev/null 2>&1") == 0)
+    {
         warn "$volume not created: volume already exists\n";
         return;
     }
 
     # Create the volume.
     my @command = ('-t', 'logs', $volume, $quota, $mountpoint);
-    unshift (@command, '-q') if $quiet;
-    if (system ($VOLCREATE, @command) != 0) {
+    if ($quiet) {
+        unshift(@command, '-q');
+    }
+    if (system($VOLCREATE, @command) != 0) {
         warn "$VOLCREATE -t logs $volume $quota $mountpoint exited with",
-            " status ", ($? >> 8), "\n";
+          " status ", ($? >> 8), "\n";
         warn "$volume not fully created, please check\n";
     } else {
         report "Created $volume with quota ${quota}MB\n";
@@ -233,13 +247,13 @@ sub create_volume {
 # base directory of the new log volume.
 sub create_month_dirs {
     my ($base) = @_;
-    for (1..12) {
-        my $month = sprintf ("%02d", $_);
+    for (1 .. 12) {
+        my $month = sprintf("%02d", $_);
         if ($JUSTPRINT) {
             print "mkdir $base/$month\n";
         } else {
-            mkdir ("$base/$month", 0755)
-                or warn "Could not create $base/$month: $!\n";
+            mkdir("$base/$month", 0755)
+              or warn "Could not create $base/$month: $!\n";
         }
     }
 }
@@ -251,24 +265,24 @@ sub create_log_volume {
     my ($year, $month, $config, $quiet) = @_;
     my ($path, $volume);
     if ($$config{type} eq 'monthly') {
-        $path = sprintf ("$$config{path}/%04d/%02d", $year, $month);
-        $volume = sprintf ("%s.%04d%02d", $$config{name}, $year, $month);
+        $path = sprintf("$$config{path}/%04d/%02d", $year, $month);
+        $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
         if (!-d "$$config{path}/$year") {
             if ($JUSTPRINT) {
                 print "mkdir $$config{path}/$year\n";
-            } elsif (!mkdir ("$$config{path}/$year", 0755)) {
+            } elsif (!mkdir("$$config{path}/$year", 0755)) {
                 warn "Could not create $$config{path}/$year: $!\n";
                 warn "$volume not created\n";
                 return;
             }
         }
     } elsif ($$config{type} eq 'yearly') {
-        $path = sprintf ("$$config{path}/%04d", $year);
-        $volume = sprintf ("%s.%04d", $$config{name}, $year);
+        $path = sprintf("$$config{path}/%04d", $year);
+        $volume = sprintf("%s.%04d", $$config{name}, $year);
     }
     if (!-d $path) {
-        create_volume ($volume, $path, $$config{quota}, $quiet);
-        create_month_dirs ($path) if $$config{type} eq 'yearly';
+        create_volume($volume, $path, $$config{quota}, $quiet);
+        create_month_dirs($path) if $$config{type} eq 'yearly';
     }
 }
 
@@ -287,7 +301,9 @@ sub parse_log {
         if (/^\s*\}/) {
             my $okay = 1;
             for (qw/name path type quota/) {
-                $okay = 0 unless exists $log{$_};
+                if (!exists $log{$_}) {
+                    $okay = 0;
+                }
             }
             if ($okay) {
                 return \%log;
@@ -296,14 +312,14 @@ sub parse_log {
                 return undef;
             }
         }
-        my ($key, $value) = split (/:\s+/, $_, 2);
+        my ($key, $value) = split(/:\s+/, $_, 2);
         $key =~ s/^\s+//;
         $value =~ s/\s+$//;
-        unless ($value) {
+        if (!$value) {
             warn "Parse error in log group on line $.\n";
             next;
         }
-        unless ($key =~ /^(name|path|type|quota)$/) {
+        if (!($key =~ /^(name|path|type|quota)$/)) {
             warn "Unknown attribute $key on line $.\n";
             next;
         }
@@ -317,13 +333,19 @@ sub parse_log {
 # configuration information for each log.
 sub parse_config {
     my @config;
-    open (CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!\n";
+    open(CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!\n";
     while (<CONFIG>) {
-        next if /^\s*\#/;
-        next if /^\s*$/;
+        if (/^\s*\#/) {
+            next;
+        }
+        if (/^\s*$/) {
+            next;
+        }
         if (/^\s*log\s+\{\s*$/) {
-            my $config = parse_log (\*CONFIG);
-            push (@config, $config) if $config;
+            my $config = parse_log(\*CONFIG);
+            if ($config) {
+                push(@config, $config);
+            }
         } else {
             warn "Parse error in configuration file on line $.\n";
             next;
@@ -338,19 +360,21 @@ sub parse_config {
 
 # Parse command line options.
 my ($help, $quiet, $ticket, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('n|dry-run|just-print' => \$JUSTPRINT,
-            'h|help'               => \$help,
-            'k|ticket-cache=s'     => \$ticket,
-            'm|mail'               => \$MAIL,
-            'q|quiet'              => \$quiet,
-            'v|version'            => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'n|dry-run|just-print' => \$JUSTPRINT,
+    'h|help'               => \$help,
+    'k|ticket-cache=s'     => \$ticket,
+    'm|mail'               => \$MAIL,
+    'q|quiet'              => \$quiet,
+    'v|version'            => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exit 1;
 } elsif ($version) {
     print "volcreate-logs $VERSION\n";
-    exit 0;
+    exit 1;
 }
 if ($MAIL and not $LOGS_ADDRESS) {
     die "\$LOGS_ADDRESS must be set in /etc/afs-admin-tools/config for -m\n";
@@ -360,15 +384,17 @@ if ($MAIL and not $LOGS_ADDRESS) {
 # from that cache and run aklog to get a token.
 if ($ticket) {
     require AFS::Utils;
-    $ticket = $LOGS_TICKETS . '/' . $ticket unless $ticket =~ m%^/%;
+    if (!($ticket =~ m%^/%)) {
+        $ticket = $LOGS_TICKETS . '/' . $ticket;
+    }
     $ENV{KRB5CCNAME} = $ticket;
-    AFS::Utils::setpag () or die "$0: unable to setpag: $!\n";
-    CORE::system ($AKLOG) == 0 or die "$0: unable to obtain tokens\n";
+    AFS::Utils::setpag() or die "$0: unable to setpag: $!\n";
+    CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens\n";
 }
 
 # Parse the configuration and get the current time.
 my @config = parse_config;
-my ($day, $month, $year) = (localtime)[3..5];
+my ($day, $month, $year) = (localtime)[3 .. 5];
 $month++;
 $year += 1900;
 
@@ -376,11 +402,13 @@ $year += 1900;
 # our actions to just those names.
 if (@ARGV) {
     my %names = map { $_ => 1 } @ARGV;
-    @config = grep { $names{$$_{name}} } @config;
-    unless (@ARGV == @config) {
+    @config = grep { $names{ $$_{name} } } @config;
+    if (!(@ARGV == @config)) {
         my %found = map { $$_{name} => 1 } @config;
         for (sort keys %names) {
-            warn "No configuration found for $_" unless $found{$_};
+            if (!$found{$_}) {
+                warn "No configuration found for $_";
+            }
         }
         exit 1;
     }
@@ -391,27 +419,27 @@ if (@ARGV) {
 for my $config (@config) {
     my ($path, $volume);
     if ($$config{type} eq 'monthly') {
-        ($volume, $path) = find_volume_month ($$config{path}, $month, $year);
+        ($volume, $path) = find_volume_month($$config{path}, $month, $year);
     } elsif ($$config{type} eq 'yearly') {
-        ($volume, $path) = find_volume_year ($$config{path}, $year);
+        ($volume, $path) = find_volume_year($$config{path}, $year);
     } else {
         warn "Unknown type $$config{type} for $$config{name}\n";
         next;
     }
     if ($path) {
-        check_quota ($volume, $path, $$config{quota});
+        check_quota($volume, $path, $$config{quota});
     } else {
-        create_log_volume ($year, $month, $config, $quiet);
+        create_log_volume($year, $month, $config, $quiet);
     }
     if ($day >= 20) {
         my $month = $month;
-        my $year = $year;
+        my $year  = $year;
         $month++;
         if ($month > 12) {
             $month = 1;
             $year++;
         }
-        create_log_volume ($year, $month, $config, $quiet);
+        create_log_volume($year, $month, $config, $quiet);
     }
 }
 
@@ -638,12 +666,15 @@ setting the $LOGS_CONFIG configuration variable.
 
 =head1 AUTHOR
 
-Russ Allbery <eagle@eyrie.org>
+Original script by Russ Allbery <eagle@eyrie.org>. Updated with
+Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 2002, 2004, 2011, 2012 The Board of Trustees of the Leland Stanford
 Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.

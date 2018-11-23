@@ -31,5 +31,15 @@ if (!eval { require Test::Spelling }) {
 }
 Test::Spelling->import;
 
+add_stopwords(<DATA>);
+
 # Check all POD in the distribution.
 all_pod_files_spelling_ok();
+
+__END__
+Allbery
+Auristor
+colorizing
+MacAllister
+nntp
+windlord
