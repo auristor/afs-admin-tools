@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.2 (2018-11-12)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # mvto -- Move an AFS volume from anywhere, intelligently.
 #
