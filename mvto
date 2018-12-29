@@ -334,7 +334,7 @@ sub update_time_yfs {
     my ($site) = @_;
 
     my $update_time = 0;
-    my $cmd = "$VOS examine -id $site -format";
+    my $cmd         = "$VOS examine -id $site -format";
     open(VEX, "$cmd |") or die "ERROR: can't fork '$cmd' - $!\n";
     local $_;
     my %av = ();
