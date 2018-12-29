@@ -308,7 +308,7 @@ sub volume_create {
     if (!$quota_kbytes) {
         die "ERROR: invalid quota value $quota\n";
     }
-            
+
     system($VOS, 'create', '-server', $server,
         '-partition', $partition, '-name', $volume,
         '-maxquota',  $quota_kbytes

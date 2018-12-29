@@ -81,15 +81,15 @@ sub human_bytes {
         my $g = $m * 1024;
         my $t = $g * 1024;
         if ($b > $t) {
-            $return_b = sprintf('%.2fT', $b/$t);
+            $return_b = sprintf('%.2fT', $b / $t);
         } elsif ($b > $g) {
-            $return_b = sprintf('%.2fG', $b/$g);
+            $return_b = sprintf('%.2fG', $b / $g);
         } elsif ($b > $m) {
-            $return_b = sprintf('%.2fM', $b/$m);
+            $return_b = sprintf('%.2fM', $b / $m);
         } elsif ($b > $k) {
-            $return_b = sprintf('%.2fK', $b/$k);
+            $return_b = sprintf('%.2fK', $b / $k);
         } else {
-            $return_b = "$bB";
+            $return_b = "${b}B";
         }
     }
 
@@ -132,10 +132,10 @@ sub show {
         $used   = human_bytes($used);
         $free   = human_bytes($free);
         $usable = human_bytes($usable);
-        $fmt    = "%17s: %10s %10s %10s %s%7.2f%%%s %10s\n",
+        $fmt    = "%17s: %10s %10s %10s %s%7.2f%%%s %10s\n";
     }
-    printf($fmt, $partition, $total, $used, $free,
-           $cstart, $pfree, $cend, $usable);
+    printf($fmt,
+        $partition, $total, $used, $free, $cstart, $pfree, $cend, $usable);
     return;
 }
 
