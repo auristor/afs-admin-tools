@@ -9,7 +9,11 @@ afs-admin-tools 2.2 (2018-12-29)
     Allow the quota units to be specified in creating volumes with
     volcreate.
 
-    Add --human to partinfo to display quotas in human readable form.
+    Add --human switch to partinfo to display quotas in human readable
+    form.
+
+    Allow command line arguments to be specified as switches in
+    volcreate.  The original positional behavior is preserved.
     
 afs-admin-tools 2.1 (unreleased)
 

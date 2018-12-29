@@ -128,10 +128,10 @@ sub show {
     my $cend   = $color ? color('reset') : '';
     my $fmt    = "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n";
     if ($opt_human) {
-        $total  = human_bytes($total);
-        $used   = human_bytes($used);
-        $free   = human_bytes($free);
-        $usable = human_bytes($usable);
+        $total  = human_bytes($total * 1024);
+        $used   = human_bytes($used * 1024);
+        $free   = human_bytes($free * 1024);
+        $usable = human_bytes($usable * 1024);
         $fmt    = "%17s: %10s %10s %10s %s%7.2f%%%s %10s\n";
     }
     printf($fmt,
@@ -285,6 +285,10 @@ that the Term::ANSIColor module be installed and available on the user's
 system (this module is not required if B<-c> is not used).
 
 To override the above thresholds, see the B<-T> option.
+
+=item B<--human>
+
+Display quote values in human readable format.
 
 =item B<-h>, B<--help>
 

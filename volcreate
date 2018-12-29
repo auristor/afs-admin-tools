@@ -33,6 +33,11 @@ use subs qw(system);
 use Getopt::Long qw(GetOptions);
 
 my ($clone, $help, $quiet, $replicas, $type, $version);
+my $opt_mtpt;
+my $opt_partition;
+my $opt_quota;
+my $opt_server;
+my $opt_volume;
 
 ##############################################################################
 # Site configuration
@@ -295,13 +300,13 @@ sub volume_create {
     } elsif ($quota =~ /^(\d+)([kmgt])/xmsi) {
         my $q = $1;
         my $m = $2;
-        if (lower($m) eq 't') {
+        if (lc($m) eq 't') {
             $quota_kbytes = $q * 1024 * 1024 * 1024;
-        } elsif (lower($m) eq 'g') {
+        } elsif (lc($m) eq 'g') {
             $quota_kbytes = $q * 1024 * 1024;
-        } elsif (lower($m) eq 'm') {
+        } elsif (lc($m) eq 'm') {
             $quota_kbytes = $q * 1024;
-        } elsif (lower($m) eq 'k') {
+        } elsif (lc($m) eq 'k') {
             $quota_kbytes = $q;
         }
     }
@@ -425,16 +430,21 @@ $0 =~ s%.*/%%;
 
 # Parse command line options.  We do allow an odd number of arguments for
 # ACLs, in order to allow things like -clear.
-Getopt::Long::config('bundling', 'no_ignore_case', 'require_order');
+Getopt::Long::config('bundling', 'no_ignore_case');
 GetOptions(
     'c|clone=s'            => \$clone,
     'h|help'               => \$help,
     'q|quiet'              => \$quiet,
+    'm|mountpt=s'          => \$opt_mtpt,
     'n|dry-run|just-print' => \$JUSTPRINT,
-    'p|proportion=f'       => \$VOLCREATE_CUTOFF,
+    'p|partition=s'        => \$opt_partition,
+    'proportion=f'         => \$VOLCREATE_CUTOFF,
+    'q|quota=s'            => \$opt_quota,
     'r|replicas=i'         => \$replicas,
+    's|server=s'           => \$opt_server,
     't|type=s'             => \$type,
-    'v|version'            => \$version
+    'version'              => \$version,
+    'v|volume=s'           => \$opt_volume
 ) or exit 1;
 if ($help) {
     exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
@@ -460,18 +470,62 @@ if ($quiet) {
 # Fill in the various information that we need.
 my ($server, $partition, $volume, $quota, $mtpt, @acls);
 if ($type) {
-    if (@ARGV < 3) {
-        die "Usage: volcreate -t type volname quota mountpoint [acls]\n";
-    }
     if ($type =~ /-r[wo]$/) {
         die "Type ends in -ro or -rw (maybe you meant to use the -r flag?)\n";
     }
-    ($volume, $quota, $mtpt, @acls) = @ARGV;
+    if ($opt_volume) {
+        $volume = $opt_volume;
+    } else {
+        $volume = shift(@ARGV);
+    }
+    if ($opt_quota) {
+        $quota = $opt_quota;
+    } else {
+        $quota = shift(@ARGV);
+    }
+    if ($opt_mtpt) {
+        $mtpt = $opt_mtpt;
+    } else {
+        $mtpt = shift(@ARGV);
+    }
+    if (!$volume || !$quota || !$mtpt) {
+        die "Usage: volcreate -t type volname quota mountpoint [acls]\n";
+    }
+    if (scalar(@ARGV) > 0) {
+        @acls = @ARGV;
+    }
 } else {
-    if (@ARGV < 5) {
+    if ($opt_server) {
+        $server = $opt_server;
+    } else {
+        $server = shift(@ARGV);
+    }
+    if ($opt_partition) {
+        $partition = $opt_partition;
+    } else {
+        $partition = shift(@ARGV);
+    }
+    if ($opt_volume) {
+        $volume = $opt_volume;
+    } else {
+        $volume = shift(@ARGV);
+    }
+    if ($opt_quota) {
+        $quota = $opt_quota;
+    } else {
+        $quota = shift(@ARGV);
+    }
+    if ($opt_mtpt) {
+        $mtpt = $opt_mtpt;
+    } else {
+        $mtpt = shift(@ARGV);
+    }
+    if (!$server || !$partition || !$volume || !$quota || !$mtpt) {
         die "Usage: volcreate server partition volname quota mtpt [acls]\n";
     }
-    ($server, $partition, $volume, $quota, $mtpt, @acls) = @ARGV;
+    if (scalar(@ARGV) > 0) {
+        @acls = @ARGV;
+    }
 }
 
 # Ensure that the mount point starts with $VOLCREATE_MOUNT_PREFIX, if set.
@@ -555,43 +609,48 @@ volcreate - Create and mount a new AFS volume
 
 =head1 SYNOPSIS
 
-B<volcreate> [B<-hnqv>] [B<-c> I<clone-from>] [B<-p> I<cutoff>] I<server>
-I<part> I<volume> I<quota>[k|m|g|t] I<mount> [I<acl> ...]
+B<volcreate> [B<-hnq>] [B<--version>] [B<-c> I<clone-from>]
+[B<--proportion> I<cutoff>] I<server> I<partition> I<volume>
+I<quota>[k|m|g|t] I<mount> [I<acl> ...]
 
-B<volcreate> [B<-hnqv>] [B<-c> I<clone-from>] B<-t> I<type> [B<-p> I<cutoff>]
-[B<-r> I<replicas>] I<volume> I<quota>[k|m|g|t] I<mount> [I<acl> ...]
+B<volcreate> [B<-hnq>] [B<--version>] [B<-c> I<clone-from>]
+[B<-proportion> I<cutoff>] [B<-r> I<replicas>] B<-t> I<type> I<volume>
+I<quota>[k|m|g|t] I<mount> [I<acl> ...]
 
 =head1 DESCRIPTION
 
-B<volcreate> creates a new AFS volume on the given server and partition,
-sets its quota, and mounts it in the file system at the given path,
-optionally setting its ACL.  It then updates the AFS mount point database
-to include this new volume.
+B<volcreate> creates a new AFS volume on the given server and
+partition, sets its quota, and mounts it in the file system at the
+given path, optionally setting its ACL.  It then updates the AFS mount
+point database to include this new volume.
 
-I<server> is the AFS server on which to create the volume.  AFS servers
-may be specified as just a number; all numeric server names will have
-C<afssvr> prepended to them.
+I<server> is the AFS server on which to create the volume.  AFS
+servers may be specified as just a number; all numeric server names
+will have C<afssvr> prepended to them.  The server can optionally be
+specified using the B<-s> option.
 
-I<part> is the partition on which to create that volume.  Partitions may
-be specified as a simple letter, as C<vicepX>, or as C</vicepX>.  More
-than 26 partitions on one server is not supported.  Partitions may also be
-specified as C<.>, in which case a random partition on that server in the
-top 20% in free space according to B<vos partinfo> is chosen, or as a
-string of letters and letter ranges such as C<ace-gm>, in which case a
-random partition of the set specified in the top 20% in free space is
-chosen.  (In this example, the set is /vicepa, /vicepc, /vicepe through
-/vicepg, or /vicepm on the given sever.)  The 20% cutoff proportion can be
-overridden with the B<-p> option.
+I<partition> is the partition on which to create that volume.
+Partitions may be specified as a simple letter, as C<vicepX>, or as
+C</vicepX>.  More than 26 partitions on one server is not supported.
+Partitions may also be specified as C<.>, in which case a random
+partition on that server in the top 20% in free space according to
+B<vos partinfo> is chosen, or as a string of letters and letter ranges
+such as C<ace-gm>, in which case a random partition of the set
+specified in the top 20% in free space is chosen.  (In this example,
+the set is /vicepa, /vicepc, /vicepe through /vicepg, or /vicepm on
+the given sever.)  The 20% cutoff proportion can be overridden with
+the B<-p> option.  The partition can be specified with the B<-p>
+option.
 
 Alternately, rather than giving a server and partition, B<volcreate>
 accepts the B<-t> option to specify a volume type.  If this option is
-given, no server or partition is necessary and B<volcreate> will instead
-place the volume on an appropriate server by finding a random partition in
-the top 20% of the most percentage space free of the available server
-partitions for that volume type.  As above, the cutoff proportion can be
-overridden with the B<-p> option.  For more information on defining volume
-types and associating them with appropriate servers and partitions, see
-L<CONFIGURATION> below.
+given, no server or partition is necessary and B<volcreate> will
+instead place the volume on an appropriate server by finding a random
+partition in the top 20% of the most percentage space free of the
+available server partitions for that volume type.  As above, the
+cutoff proportion can be overridden with the B<--proportion> option.
+For more information on defining volume types and associating them
+with appropriate servers and partitions, see L<CONFIGURATION> below.
 
 When B<-t> is given, B<-r> may also be given to specify a number of
 replicas if a replicated volume is being created.  When creating a
@@ -604,9 +663,11 @@ volume's quota.  The quota value defaults to megabytes (B<not> in
 kilobytes) if not units are specified.  Valid quota units are k, m, g,
 and t which are kilobytes, megabytes, gigabytes, and terabytes
 respecitively.  I<mount> is the full path to the intended mount
-location of the volume (this must begin with "/afs/.ir/" so that the
-mount point database remains consistent).  I<acl> is any normal ACL
-arguments to C<fs setacl>.
+location of the volume (this must begin with $VOLCREATE_MOUNT_PREFIX
+so that the mount point database remains consistent).  I<acl> is any
+normal ACL arguments to C<fs setacl>.  The quota, mount point, and
+volume can also be specified using the B<-q>, B<-m>, and B<-v> options
+respectively.
 
 For some types of volumes, some ACLs will be set automatically.  This is
 governed by the F<acl-rules> file; see L<CONFIGURATION> below.
@@ -630,11 +691,19 @@ even though it's ignored.  This is a wart in the interface.)
 Print out this documentation (which is done simply by feeding the script
 to C<perldoc -t>).
 
+=item B<-m> I<mount point>, B<--mountpt>=I<mount point>
+
+The mount point for the volume.
+
 =item B<-n>, B<--dry-run>, B<--just-print>
 
 Don't run any commands, just print out what would have been done.
 
-=item B<-p> I<cutoff>, B<--proportion>=I<cutoff>
+=item B<-p> I<afs partition>, B<--partition>=I<afs partition>
+
+The partition to create the volume on.
+
+=item B<--proportion>=I<cutoff>
 
 By default, when placing read/write volumes, the destination partition
 will be chosen randomly from the top 20% of partitions ranked by the most
@@ -663,6 +732,10 @@ same server and partition as the read/write volume; the rest will be
 chosen from the servers that hold read-only replicas for that volume type.
 B<-t> must be given if this option is used.
 
+=item B<-s> I<afs server>, B<--server>=I<server>
+
+The AFS file server to create the volume on.
+
 =item B<-t> I<type>, B<--type>=I<type>
 
 Create a volume of the specified type.  When this option is used, no
@@ -671,9 +744,13 @@ find all the servers that can store that volume type and pick the server
 and partition with the most percentage space free.  This option is
 required to use B<-r>.
 
-=item B<-v>, B<--version>
+=item B<--version>
 
 Print out the version of B<volcreate> and quit.
+
+=item B<-v> I<volume name>, B<--volume>=I<volume name>
+
+The name of the volume to create.
 
 =back
 
