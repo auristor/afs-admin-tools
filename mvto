@@ -217,8 +217,9 @@ sub volinfo {
 sub volinfo_afs {
     my ($volume) = @_;
     my (%results, $rotime, $rwtime);
-    open(VEX, "$VOS examine -id $volume $LOCALAUTH |")
-      or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume $LOCALAUTH";
+    open(VEX, "$cmd |")
+      or die "$0: can't fork '$cmd' - $!\n";
     local $_;
     $results{sites} = 0;
     while (<VEX>) {
@@ -243,11 +244,11 @@ sub volinfo_afs {
     }
     close VEX;
     if (!($results{rwserver} && $results{size})) {
-        die "$0: unable to parse vos examine $volume\n";
+        die "$0: unable to parse '$cmd'\n";
     }
     if ($results{sites}) {
-        open(VEX, "$VOS examine -id $volume.readonly $LOCALAUTH |")
-          or die "$0: can't fork $VOS examine for readonly: $!\n";
+        my $cmd_ro = "$VOS examine -id $volume.readonly $LOCALAUTH";
+        open(VEX, "$cmd_ro |") or die "$0: can't fork '$cmd_ro' - $!\n";
         while (<VEX>) {
             if (/^\s+Last Update (.*)/) {
                 my $tmp = $1;
@@ -265,8 +266,9 @@ sub volinfo_yfs {
     my ($volume) = @_;
     my %results = ();
 
-    open(VEX, "$VOS examine -id $volume -format |")
-      or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume -format";
+    open(VEX, " |")
+      or die "$0: can't fork '$cmd' - $!\n";
     local $_;
 
     my %av = ();
@@ -281,7 +283,7 @@ sub volinfo_yfs {
     close VEX;
 
     if (!$av{'type'}) {
-        die "ERROR: unable to parse vos examine -format -id $volume\n";
+        die "ERROR: unable to parse '$cmd'\n";
     }
     if ($av{'type'} ne 'RW') {
         die "ERROR: volume $volume is $av{'type'}, not RW\n";
@@ -332,8 +334,8 @@ sub update_time_yfs {
     my ($site) = @_;
 
     my $update_time = 0;
-    open(VEX, "$VOS examine -id $site -format |")
-      or die "ERROR: can't fork $VOS examine for readonly: $!\n";
+    my $cmd = "$VOS examine -id $site -format";
+    open(VEX, "$cmd |") or die "ERROR: can't fork '$cmd' - $!\n";
     local $_;
     my %av = ();
     while (<VEX>) {

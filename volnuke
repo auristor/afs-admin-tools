@@ -112,8 +112,8 @@ sub volinfo {
 sub volinfo_afs {
     my ($volume) = @_;
     my (%results, $rotime, $rwtime);
-    open(VEX, "$VOS examine -id $volume |")
-      or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume";
+    open(VEX, "$cmd |") or die "$0: can't fork $VOS examine: $!\n";
     local $_;
     while (<VEX>) {
         if (/^\Q$volume\E\s+\d+ (RW|RO|BK)\s+(\d+) K\s+On-line\s*$/) {
@@ -139,11 +139,12 @@ sub volinfo_afs {
     }
     close VEX;
     if (!($results{rwserver} && $results{size})) {
-        die "$0: unable to parse vos examine $volume\n";
+        die "$0: unable to parse $cmd\n";
     }
     if ($results{sites}) {
-        open(VEX, "$VOS examine -id ${volume}.readonly |")
-          or die "$0: can't fork $VOS examine for readonly: $!\n";
+        my $cmd_ro = "$VOS examine -id ${volume}.readonly";
+        open(VEX, "$cmd_ro |")
+          or die "$0: can't fork '$cmd_ro' - $!\n";
         while (<VEX>) {
             if (/^\s+Last Update (.*)/) {
                 my $tmp = $1;
@@ -165,8 +166,8 @@ sub volinfo_afs {
 sub volinfo_yfs {
     my ($volume) = @_;
     my (%results, $rotime, $rwtime);
-    open(VEX, "$VOS examine -id $volume |")
-      or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume -format";
+    open(VEX, "$cmd |") or die "$0: can't fork $VOS examine: $!\n";
     local $_;
 
     my %av = ();
@@ -181,7 +182,7 @@ sub volinfo_yfs {
     close VEX;
 
     if (!$av{'type'}) {
-        die "ERROR: unable to parse vos examine -format -id $volume\n";
+        die "ERROR: unable to parse $cmd\n";
     }
     if ($av{'type'} ne 'RW') {
         die "ERROR: volume $volume is $av{'type'}, not RW\n";
@@ -212,8 +213,8 @@ sub volinfo_yfs {
     $rwtime         = $av{updateDate};
 
     if ($results{sites} > 1) {
-        open(VEX, "$VOS examine -id ${volume}.readonly -format |")
-          or die "$0: can't fork $VOS examine for readonly: $!\n";
+        my $cmd_ro = "$VOS examine -id ${volume}.readonly -format";
+        open(VEX, "$cmd_ro |") or die "$0: can't fork $cmd_ro - $!\n";
         my %ro_av = ();
         while (<VEX>) {
             chomp;
