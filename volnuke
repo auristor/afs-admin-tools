@@ -290,7 +290,9 @@ if ($volume{unreleased}) {
 }
 print "\n";
 for my $ro_server (keys %{ $volume{ro} }) {
-    print "  replica on $ro_server $volume{ro}{$ro_server}\n";
+    if ($volume{ro}{$ro_server}) {
+        print "  replica on $ro_server $volume{ro}{$ro_server}\n";
+    }
 }
 if (!$force) {
     print "\nContinue (y/N)? ";
