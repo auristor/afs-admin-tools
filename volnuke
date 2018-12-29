@@ -199,10 +199,10 @@ sub volinfo_yfs {
             if ($av{"site_type_$i"} eq 'RW') {
                 $rw_cnt++;
                 $results{'rwserver'} = $fqdn;
-                $results{'rwpart'}   = $av{"site_partition_$1"};
+                $results{'rwpart'}   = $av{"site_partition_$i"};
             }
             if ($av{"site_type_$i"} eq 'RO') {
-                $results{'ro'}{$fqdn} = $av{"site_partition_$1"};
+                $results{'ro'}{$fqdn} = $av{"site_partition_$i"};
                 $ro_cnt++;
             }
         }
@@ -330,7 +330,7 @@ if ($volume{sites}) {
                 $VOS,         'remove',
                 '-server',    $ro_server,
                 '-partition', $volume{ro}{$ro_server},
-                "${volume}.readonly"
+                '-id',        "${volume}.readonly"
             ]
         );
     }
@@ -339,7 +339,7 @@ push(
     @commands,
     [
         $VOS,         'remove',        '-server', $volume{rwserver},
-        '-partition', $volume{rwpart}, $volume
+        '-partition', $volume{rwpart}, '-id',     $volume
     ]
 );
 
