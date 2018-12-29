@@ -1,10 +1,15 @@
                    User-Visible afs-admin-tools Changes
 
-afs-admin-tools 2.2 (2018-11-23)
+afs-admin-tools 2.2 (2018-12-29)
 
     Update scripts to support Auristor as well as AFS.  Re-format
     scripts to follow Perl standards used by the Infrastructure
     Delivery Group at Stanford.
+
+    Allow the quota units to be specified in creating volumes with
+    volcreate.
+
+    Add --human to partinfo to display quotas in human readable form.
     
 afs-admin-tools 2.1 (unreleased)
 

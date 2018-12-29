@@ -30,8 +30,10 @@ use warnings;
 
 use Getopt::Long qw(GetOptions);
 
-# Term::ANSIColor is also loaded dynamically if color is requested with the -c
-# option.
+my $opt_human;
+
+# Term::ANSIColor is also loaded dynamically if color is requested
+# with the -c option.
 
 ##############################################################################
 # Site configuration
@@ -64,8 +66,35 @@ if (-f '/etc/afs-admin-tools/config') {
     require '/etc/afs-admin-tools/config';
 }
 
-# You may also want to tweak the width of the partition column in the output
-# if you use machine names of a different length.  Search for %17s below.
+##############################################################################
+# Utilities
+##############################################################################
+
+# Return human readable byte value
+sub human_bytes {
+    my ($b) = @_;
+
+    my $return_b = $b;
+    if ($b =~ /^\d+$/) {
+        my $k = 1024;
+        my $m = $k * 1024;
+        my $g = $m * 1024;
+        my $t = $g * 1024;
+        if ($b > $t) {
+            $return_b = sprintf('%.2fT', $b/$t);
+        } elsif ($b > $g) {
+            $return_b = sprintf('%.2fG', $b/$g);
+        } elsif ($b > $m) {
+            $return_b = sprintf('%.2fM', $b/$m);
+        } elsif ($b > $k) {
+            $return_b = sprintf('%.2fK', $b/$k);
+        } else {
+            $return_b = "$bB";
+        }
+    }
+
+    return $return_b;
+}
 
 ##############################################################################
 # Output formatting
@@ -97,8 +126,17 @@ sub show {
     my $pfree  = 100 * $used / $total;
     my $cstart = $color ? choose_color($pfree) : '';
     my $cend   = $color ? color('reset') : '';
-    printf "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n",
-      $partition, $total, $used, $free, $cstart, $pfree, $cend, $usable;
+    my $fmt    = "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n";
+    if ($opt_human) {
+        $total  = human_bytes($total);
+        $used   = human_bytes($used);
+        $free   = human_bytes($free);
+        $usable = human_bytes($usable);
+        $fmt    = "%17s: %10s %10s %10s %s%7.2f%%%s %10s\n",
+    }
+    printf($fmt, $partition, $total, $used, $free,
+           $cstart, $pfree, $cend, $usable);
+    return;
 }
 
 ##############################################################################
@@ -113,6 +151,7 @@ Getopt::Long::config('bundling', 'no_ignore_case');
 GetOptions(
     'color|c'        => \$color,
     'help|h'         => \$help,
+    'human'          => \$opt_human,
     'quiet|q'        => \$quiet,
     'thresholds|T=s' => \$thresholds,
     'total|t'        => \$totals,

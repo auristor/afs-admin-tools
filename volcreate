@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.2 (2018-11-23)';
+our $VERSION = '2.2 (2018-12-29)';
 #
 # volcreate -- Create a volume, mount and set acl and quota
 #
@@ -289,9 +289,29 @@ sub find_best_replicated {
 # on a failure to create the volume.
 sub volume_create {
     my ($server, $partition, $volume, $quota) = @_;
+    my $quota_kbytes;
+    if ($quota =~ /^(\d+)$/xms) {
+        $quota_kbytes = $quota * 1024;
+    } elsif ($quota =~ /^(\d+)([kmgt])/xmsi) {
+        my $q = $1;
+        my $m = $2;
+        if (lower($m) eq 't') {
+            $quota_kbytes = $q * 1024 * 1024 * 1024;
+        } elsif (lower($m) eq 'g') {
+            $quota_kbytes = $q * 1024 * 1024;
+        } elsif (lower($m) eq 'm') {
+            $quota_kbytes = $q * 1024;
+        } elsif (lower($m) eq 'k') {
+            $quota_kbytes = $q;
+        }
+    }
+    if (!$quota_kbytes) {
+        die "ERROR: invalid quota value $quota\n";
+    }
+            
     system($VOS, 'create', '-server', $server,
         '-partition', $partition, '-name', $volume,
-        '-maxquota',  $quota * 1000
+        '-maxquota',  $quota_kbytes
       ) == 0
       or die 'Failed to create volume (status ', ($? >> 8), ")\n";
     system($VOS, 'backup', '-id', $volume) == 0
@@ -536,10 +556,10 @@ volcreate - Create and mount a new AFS volume
 =head1 SYNOPSIS
 
 B<volcreate> [B<-hnqv>] [B<-c> I<clone-from>] [B<-p> I<cutoff>] I<server>
-I<part> I<volume> I<quota> I<mount> [I<acl> ...]
+I<part> I<volume> I<quota>[k|m|g|t] I<mount> [I<acl> ...]
 
 B<volcreate> [B<-hnqv>] [B<-c> I<clone-from>] B<-t> I<type> [B<-p> I<cutoff>]
-[B<-r> I<replicas>] I<volume> I<quota> I<mount> [I<acl> ...]
+[B<-r> I<replicas>] I<volume> I<quota>[k|m|g|t] I<mount> [I<acl> ...]
 
 =head1 DESCRIPTION
 
@@ -579,11 +599,14 @@ replicated volume, the read/write copy will be placed as described above,
 but the read-only replicas will be placed on the I<replicas> partitions
 with the most free space.
 
-I<volume> is the name of the volume to create.  I<quota> is its quota in
-megabytes (B<not> in kilobytes).  I<mount> is the full path to the
-intended mount location of the volume (this must begin with "/afs/.ir/" so
-that the mount point database remains consistent).  I<acl> is any normal
-ACL arguments to C<fs setacl>.
+I<volume> is the name of the volume to create.  I<quota> is the
+volume's quota.  The quota value defaults to megabytes (B<not> in
+kilobytes) if not units are specified.  Valid quota units are k, m, g,
+and t which are kilobytes, megabytes, gigabytes, and terabytes
+respecitively.  I<mount> is the full path to the intended mount
+location of the volume (this must begin with "/afs/.ir/" so that the
+mount point database remains consistent).  I<acl> is any normal ACL
+arguments to C<fs setacl>.
 
 For some types of volumes, some ACLs will be set automatically.  This is
 governed by the F<acl-rules> file; see L<CONFIGURATION> below.
