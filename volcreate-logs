@@ -58,6 +58,12 @@ our $FS = 'fs';
 our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
 $VOS ||= 'vos';
 
+# Maximum quota
+our $LOGS_MAX_QUOTA = '50G';
+
+# Cell root used for validation
+our $CELL_ROOT = '/afs/ir';
+
 # Load the configuration file if it exists.
 if (-f '/etc/afs-admin-tools/config') {
     require '/etc/afs-admin-tools/config';
@@ -88,7 +94,7 @@ sub start_mail {
     $sendmail ||= '/usr/lib/sendmail';
     my $date = strftime("%Y-%m-%d", localtime);
     open(MAIL, "| $sendmail -t -oi -oem")
-      or die "Cannot fork $sendmail: $!\n";
+      or die "Cannot fork $sendmail: $!";
     print MAIL "To: $LOGS_ADDRESS\n";
     print MAIL "Subject: Log volume report ($date)\n";
     print MAIL "\n";
@@ -113,16 +119,16 @@ sub report {
 # Volume quota checking
 ##############################################################################
 
-# Takes the volume name, the full path to a mount point for a volume, and the
-# minimum quota that that volume should have.  Increases the quota of the
-# volume to at least the minimum and by 10% if the volume is within 90% of its
-# quota.
-sub check_quota {
-    my ($volume, $mountpoint, $quota_min) = @_;
+# This subroutine takes a quota specification and turn the value in
+# kilobytes.  The input is assumed to be megabytes if the units are
+# not specified.
+
+sub kbytes {
+    my ($quota) = @_;
     my $quota_kbytes;
-    if ($quota_min =~ /^(\d+)$/xms) {
-        $quota_kbytes = $quota_min * 1024;
-    } elsif ($quota_min =~ /^(\d+)([kmgt])/xmsi) {
+    if ($quota =~ /^(\d+)$/xms) {
+        $quota_kbytes = $quota * 1024;
+    } elsif ($quota =~ /^(\d+)([kmgt])/xmsi) {
         my $q = $1;
         my $m = $2;
         if (lc($m) eq 't') {
@@ -133,13 +139,45 @@ sub check_quota {
             $quota_kbytes = $q * 1024;
         } elsif (lc($m) eq 'k') {
             $quota_kbytes = $q;
+        } else {
+            die "ERROR: invalid unit of measure ($m)";
         }
     }
     if (!$quota_kbytes) {
-        die "ERROR: invalid quota value ($quota_min)\n";
+        die "ERROR: invalid quota value ($quota)";
     }
-    my $minimum   = $quota_kbytes;
-    my @listquota = `$FS listquota $mountpoint 2>&1`;
+    return $quota_kbytes;
+}
+
+# This subroutine takes a quota specification in kbytes and returns
+# a human friendly form.
+
+sub display_kbytes {
+    my ($quota_kbytes) = @_;
+    my @sizes = ('T', 'G', 'M');
+    my $quota = "${quota_kbytes}K";
+    my $i     = $quota_kbytes;
+    my $u     = 'K';
+    while ($i > 1024) {
+        if (@sizes) {
+            $i     = $i / 1024;
+            $u     = pop(@sizes);
+            $quota = "${i}$u";
+        } else {
+            last;
+        }
+    }
+    return $quota;
+}
+
+# Takes the volume name, the full path to a mount point for a volume, and the
+# minimum quota that that volume should have.  Increases the quota of the
+# volume to at least the minimum and by 10% if the volume is within 90% of its
+# quota.
+sub check_quota {
+    my ($volume, $mountpoint, $quota_min) = @_;
+    my $minimum   = kbytes($quota_min);
+    my @listquota = `$FS listquota -path $mountpoint 2>&1`;
 
     # The first line is either an error or headers.  Check to see if it is
     # an error, and if not, ignore it.  The second line is our quota
@@ -161,12 +199,16 @@ sub check_quota {
     # Figure out if we need to do anything.
     my $newquota = $quota;
     if ($percent > 90) {
-        $newquota = int(($quota / 10000) * 1.1 + 0.9) * 10000;
+        $newquota = int($quota * 1.1 + 0.9);
     }
     $newquota = $minimum if ($newquota < $minimum);
     if ($newquota != $quota) {
-        report "Setting quota to ", $newquota / 1000, "MB for $volume\n";
-        if (system($FS, 'setquota', $mountpoint, $newquota) != 0) {
+        my $s = display_kbytes($newquota);
+        report "Setting quota to $s MB for $volume\n";
+        if (
+            system($FS, 'setquota', '-path', $mountpoint, '-max', $newquota)
+            != 0)
+        {
             warn "$FS setquota $mountpoint $newquota exited with status ",
               ($? >> 8), "\n";
             warn "Unable to set quota for $volume\n";
@@ -183,7 +225,7 @@ sub check_quota {
 sub lsmount {
     my ($path) = @_;
     if ($path =~ /[\\\';]/) {
-        die "$0: invalid character in $path\n";
+        die "$0: invalid character in $path";
     }
     my $volume = `$FS lsmount '$path' 2>&1`;
     if ($volume =~ /is a mount point for volume \'\#([^\']+)\'/) {
@@ -232,11 +274,17 @@ sub find_volume_year {
 # already exist.
 sub create_volume {
     my ($volume, $mountpoint, $quota, $quiet) = @_;
-    if ($quota > 50000) {
-        warn "$volume not created: ${quota}MB exceeds maximum of 50GB\n";
+    my $max = kbytes($LOGS_MAX_QUOTA);
+    if ($quota > $max) {
+        my $s = display_kbytes($quota);
+        my $m = display_kbytes($max);
+        warn "$volume not created: ${s} exceeds maximum of $m\n";
         return;
     }
-    $mountpoint =~ s%/afs/ir%/afs/.ir%;
+    my $cell_root_rw = reverse($CELL_ROOT);
+    $cell_root_rw =~ s%(.*?)/%$1./%xms;
+    $cell_root_rw = reverse($cell_root_rw);
+    $mountpoint =~ s%$CELL_ROOT%$cell_root_rw%;
     if (-d "$mountpoint") {
         warn "$volume not created: $mountpoint already exists\n";
         return;
@@ -258,7 +306,8 @@ sub create_volume {
           " status ", ($? >> 8), "\n";
         warn "$volume not fully created, please check\n";
     } else {
-        report "Created $volume with quota ${quota}MB\n";
+        my $s = display_kbytes($quota);
+        report "Created $volume with quota ${s}\n";
     }
 }
 
@@ -342,6 +391,11 @@ sub parse_log {
             warn "Unknown attribute on line $. ($key)\n";
             next;
         }
+        if ($key eq 'quota') {
+            if ($value =~ /^\d+$/xms) {
+                $value = kbytes("${value}M");
+            }
+        }
         $log{$key} = $value;
     }
     warn "Unterminated log group on line $.\n";
@@ -352,7 +406,7 @@ sub parse_log {
 # configuration information for each log.
 sub parse_config {
     my @config;
-    open(CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!\n";
+    open(CONFIG, $LOGS_CONFIG) or die "Cannot open $LOGS_CONFIG: $!";
     while (<CONFIG>) {
         if (/^\s*\#/) {
             next;
@@ -389,14 +443,14 @@ GetOptions(
     'v|version'            => \$version
 ) or exit 1;
 if ($help) {
-    exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exec('perldoc', '-t', $0) or die "Cannot fork: $!";
     exit 1;
 } elsif ($version) {
     print "volcreate-logs $VERSION\n";
     exit 1;
 }
 if ($MAIL and not $LOGS_ADDRESS) {
-    die "\$LOGS_ADDRESS must be set in /etc/afs-admin-tools/config for -m\n";
+    die "\$LOGS_ADDRESS must be set in /etc/afs-admin-tools/config for -m";
 }
 
 # If a ticket cache was specified on the command line, obtain Kerberos tickets
@@ -407,8 +461,8 @@ if ($ticket) {
         $ticket = $LOGS_TICKETS . '/' . $ticket;
     }
     $ENV{KRB5CCNAME} = $ticket;
-    AFS::Utils::setpag() or die "$0: unable to setpag: $!\n";
-    CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens\n";
+    AFS::Utils::setpag() or die "$0: unable to setpag: $!";
+    CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens";
 }
 
 # Parse the configuration and get the current time.
@@ -599,6 +653,15 @@ F</etc/afs-admin-tools/log-volumes>.
 The default root path for ticket files, used for the B<-k> option if a
 relative path to a ticket file was given.  The default value is
 F</var/run>.
+
+=item $CELL_ROOT
+
+The root of the AFS cell.  It not specified then /afs/ir is used.
+
+=item $LOGS_MAX_QUOTA
+
+The maximum quota value that will be set.  If not specified then
+the default value is 50G, i.e. 50 gigabytes.
 
 =item $AKLOG
 
