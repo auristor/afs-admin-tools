@@ -118,8 +118,27 @@ sub report {
 # volume to at least the minimum and by 10% if the volume is within 90% of its
 # quota.
 sub check_quota {
-    my ($volume, $mountpoint, $minimum) = @_;
-    $minimum *= 1000;
+    my ($volume, $mountpoint, $quota_min) = @_;
+    my $quota_kbytes;
+    if ($quota_min =~ /^(\d+)$/xms) {
+        $quota_kbytes = $quota_min * 1024;
+    } elsif ($quota_min =~ /^(\d+)([kmgt])/xmsi) {
+        my $q = $1;
+        my $m = $2;
+        if (lc($m) eq 't') {
+            $quota_kbytes = $q * 1024 * 1024 * 1024;
+        } elsif (lc($m) eq 'g') {
+            $quota_kbytes = $q * 1024 * 1024;
+        } elsif (lc($m) eq 'm') {
+            $quota_kbytes = $q * 1024;
+        } elsif (lc($m) eq 'k') {
+            $quota_kbytes = $q;
+        }
+    }
+    if (!$quota_kbytes) {
+        die "ERROR: invalid quota value ($quota_min)\n";
+    }
+    my $minimum   = $quota_kbytes;
     my @listquota = `$FS listquota $mountpoint 2>&1`;
 
     # The first line is either an error or headers.  Check to see if it is
@@ -320,7 +339,7 @@ sub parse_log {
             next;
         }
         if (!($key =~ /^(name|path|type|quota)$/)) {
-            warn "Unknown attribute $key on line $.\n";
+            warn "Unknown attribute on line $. ($key)\n";
             next;
         }
         $log{$key} = $value;
@@ -616,7 +635,7 @@ increase quota or create new log volumes as needed.  The syntax is:
         name: <volume-name>
         path: <base-path>
         type: monthly | yearly
-        quota: <quota>
+        quota: <quota>[k|m|g|t]
     }
 
 where <volume-name> is the base name of the volume (C<.YYYY> or C<.YYYYMM>
@@ -624,7 +643,7 @@ will be appended), <base-path> is the root of the log structure (its
 immediate subdirectories must be the year directories), type is either
 monthly to create a new volume for each month or yearly to create one
 volume for each year of logs, and <quota> is the starting quota for each
-volume in MB.
+volume in MB if the units are not specified.
 
 Blank lines and lines beginning with C<#> are ignored.
 
