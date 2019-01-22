@@ -1,3 +1,12 @@
+afs-admin-tools (2.2-1) unstable; urgency=medium
+
+  * Import new upstream version.
+  * Update packaging to manually install script and man pages instead
+    of relying on dh_autoinstall.
+  * Update build-depends to support perltidy and help tests.
+
+ -- Bill MacAllister <bill@ca-zephyr.org>  Mon, 21 Jan 2019 23:13:09 +0000
+
 afs-admin-tools (2.0-1) unstable; urgency=low
 
   * Initial packaging.

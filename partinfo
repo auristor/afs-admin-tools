@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # partinfo -- Show summary of space on AFS server partitions.
 #
@@ -9,9 +9,13 @@ our $VERSION = '2.0 (2013-01-15)';
 # added to that partition before putting it over 90% full.
 #
 # Written by Neil Crellin <neilc@stanford.edu>
-# Modifications by Russ Allbery <rra@stanford.edu>
+# Modifications by Russ Allbery <eagle@eyrie.org>
 # Copyright 1998, 1999, 2003, 2004, 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Modifications by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -26,12 +30,22 @@ use warnings;
 
 use Getopt::Long qw(GetOptions);
 
-# Term::ANSIColor is also loaded dynamically if color is requested with the -c
-# option.
+my $opt_human;
+
+# Term::ANSIColor is also loaded dynamically if color is requested
+# with the -c option.
 
 ##############################################################################
 # Site configuration
 ##############################################################################
+
+# Test to find out whether the server is OpenAFS or YFS
+our $YFS_SERVER;
+if (-e '/etc/yfs') {
+    $YFS_SERVER = 1;
+} else {
+    $YFS_SERVER = 0;
+}
 
 # The default thresholds.  The first gives the threshold before the partition
 # is considered reasonably well-utilized, and defaults to 60%.  The second
@@ -52,8 +66,35 @@ if (-f '/etc/afs-admin-tools/config') {
     require '/etc/afs-admin-tools/config';
 }
 
-# You may also want to tweak the width of the partition column in the output
-# if you use machine names of a different length.  Search for %17s below.
+##############################################################################
+# Utilities
+##############################################################################
+
+# Return human readable byte value
+sub human_bytes {
+    my ($b) = @_;
+
+    my $return_b = $b;
+    if ($b =~ /^\d+$/) {
+        my $k = 1024;
+        my $m = $k * 1024;
+        my $g = $m * 1024;
+        my $t = $g * 1024;
+        if ($b > $t) {
+            $return_b = sprintf('%.2fT', $b / $t);
+        } elsif ($b > $g) {
+            $return_b = sprintf('%.2fG', $b / $g);
+        } elsif ($b > $m) {
+            $return_b = sprintf('%.2fM', $b / $m);
+        } elsif ($b > $k) {
+            $return_b = sprintf('%.2fK', $b / $k);
+        } else {
+            $return_b = "${b}B";
+        }
+    }
+
+    return $return_b;
+}
 
 ##############################################################################
 # Output formatting
@@ -64,15 +105,15 @@ if (-f '/etc/afs-admin-tools/config') {
 # be overridden with -T.
 sub choose_color {
     my ($pfree) = @_;
-    if    ($pfree < $PARTINFO_EMPTY) { return color ('green') }
-    elsif ($pfree > $PARTINFO_FULL)  { return color ('red')   }
-    else { return '' }
+    if    ($pfree < $PARTINFO_EMPTY) { return color('green') }
+    elsif ($pfree > $PARTINFO_FULL)  { return color('red') }
+    else                             { return '' }
 }
 
 # Print the heading for the output.
 sub heading {
     printf "%17s: %10s %10s %10s %8s %10s\n",
-        'Partition', 'Total', 'Used', 'Free', '%Full', 'Available';
+      'Partition', 'Total', 'Used', 'Free', '%Full', 'Available';
 }
 
 # Given the partition tag, the total space, the free space, and a flag saying
@@ -80,13 +121,22 @@ sub heading {
 # use formats because they mess up when colors are used.
 sub show {
     my ($partition, $total, $free, $color) = @_;
-    my $used = $total - $free;
-    my $usable = int ($free - ((100 - $PARTINFO_FULL) / 100) * $total);
-    my $pfree = 100 * $used / $total;
-    my $cstart = $color ? choose_color ($pfree) : '';
-    my $cend = $color ? color ('reset') : '';
-    printf "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n",
-        $partition, $total, $used, $free, $cstart, $pfree, $cend, $usable;
+    my $used   = $total - $free;
+    my $usable = int($free - ((100 - $PARTINFO_FULL) / 100) * $total);
+    my $pfree  = 100 * $used / $total;
+    my $cstart = $color ? choose_color($pfree) : '';
+    my $cend   = $color ? color('reset') : '';
+    my $fmt    = "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n";
+    if ($opt_human) {
+        $total  = human_bytes($total * 1024);
+        $used   = human_bytes($used * 1024);
+        $free   = human_bytes($free * 1024);
+        $usable = human_bytes($usable * 1024);
+        $fmt    = "%17s: %10s %10s %10s %s%7.2f%%%s %10s\n";
+    }
+    printf($fmt,
+        $partition, $total, $used, $free, $cstart, $pfree, $cend, $usable);
+    return;
 }
 
 ##############################################################################
@@ -97,48 +147,73 @@ sub show {
 my $fullpath = $0;
 $0 =~ s%.*/%%;
 my ($color, $help, $quiet, $thresholds, $totals, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('color|c'        => \$color,
-            'help|h'         => \$help,
-            'quiet|q'        => \$quiet,
-            'thresholds|T=s' => \$thresholds,
-            'total|t'        => \$totals,
-            'version|v'      => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'color|c'        => \$color,
+    'help|h'         => \$help,
+    'human'          => \$opt_human,
+    'quiet|q'        => \$quiet,
+    'thresholds|T=s' => \$thresholds,
+    'total|t'        => \$totals,
+    'version|v'      => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $fullpath);
+    exec('perldoc', '-t', $fullpath);
+    exit 1;
 } elsif ($version) {
     print "partinfo $VERSION\n";
-    exit 0;
+    exit 1;
 }
 if ($color) {
     require Term::ANSIColor;
-    Term::ANSIColor->import ('color');
+    Term::ANSIColor->import('color');
 }
-die "Usage: $0 [-chqtv] [-T <empty>,<full>] <afssvr>\n" if (@ARGV != 1);
+if (@ARGV != 1) {
+    die "Usage: $0 [-chqtv] [-T <empty>,<full>] <afssvr>\n";
+}
 my $server = shift;
-$server = 'afssvr' . $server if ($server =~ /^\d+$/);
+if (($server =~ /^\d+$/)) {
+    $server = 'afssvr' . $server;
+}
 
 # Process threshold argument if provided.
 if ($thresholds) {
-    die "$0: argument to -T must be two numbers 0-100 separated by a comma\n"
-        unless ($thresholds =~ /^(\d{1,2}|100),(\d{1,2}|100)$/);
+    if ($thresholds !~ /^(\d{1,2}|100),(\d{1,2}|100)$/) {
+        die "$0: argument to -T must be two numbers 0-100, "
+          . "separated by a comma\n";
+    }
     ($PARTINFO_EMPTY, $PARTINFO_FULL) = ($1, $2);
 }
 
 # Run vos partinfo and parse the output.  Print out a line for each partition,
 # and copy any other output to standard output without changing it.
-heading unless $quiet;
+if (!$quiet) {
+    heading;
+}
 my ($ttotal, $tfree);
-open (PARTINFO, "$VOS partinfo $server |") or die "$0: can't fork: $!\n";
+open(PARTINFO, "$VOS partinfo -server $server |")
+  or die "$0: can't fork: $!\n";
 while (<PARTINFO>) {
     if (m%^Free space on partition (/vicep\S+): (\d+) K .* total (\d+)$%) {
         my ($partition, $free, $total) = ($1, $2, $3);
         $partition = "$server $partition";
-        show ($partition, $total, $free, $color);
+        show($partition, $total, $free, $color);
         if ($totals) {
             $ttotal += $total;
-            $tfree += $free;
+            $tfree  += $free;
+        }
+    } elsif (
+        m%^Free \s+ space \s+ on \s+ server \s+ (\S+)
+               \s+ partition \s+ (/vicep\S+):
+               \s+ (\d+) \s+ K \s+ blocks
+               \s+ out \s+ of \s+ total \s+ (\d+)$%xms
+      )
+    {
+        my ($server, $partition, $free, $total) = ($1, $2, $3, $4);
+        show($partition, $total, $free, $color);
+        if ($totals) {
+            $ttotal += $total;
+            $tfree  += $free;
         }
     } else {
         print;
@@ -149,7 +224,7 @@ close PARTINFO;
 # Print totals if we're supposed to.
 if ($totals) {
     print "\n";
-    show ('TOTAL', $ttotal, $tfree, $color);
+    show('TOTAL', $ttotal, $tfree, $color);
 }
 
 __END__
@@ -210,6 +285,10 @@ that the Term::ANSIColor module be installed and available on the user's
 system (this module is not required if B<-c> is not used).
 
 To override the above thresholds, see the B<-T> option.
+
+=item B<--human>
+
+Display quote values in human readable format.
 
 =item B<-h>, B<--help>
 
@@ -303,13 +382,17 @@ Use thresholds of 70% and 95% instead, showing the results in color:
 =head1 AUTHORS
 
 Original Perl script written by Neil Crellin <neilc@stanford.edu>,
-modified by Russ Allbery <rra@stanford.edu> to use formats, to include an
+modified by Russ Allbery <eagle@eyrie.org> to use formats, to include an
 explanatory header, to use color if wanted, and to add optional totals.
+
+Bill MacAllister <bill@ca-zephyr.org>, modifications to support Auristor.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1998, 1999, 2003, 2004, 2011 The Board of Trustees of the Leland
 Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.
@@ -318,8 +401,10 @@ under the same terms as Perl itself.
 
 L<vos(1)>, L<vos_partinfo(1)>
 
-This script is part of the afs-admin-tools package.  The most recent
-version is available from the afs-admin-tools web page at
-L<http://www.eyrie.org/~eagle/software/afs-admin-tools/>.
+This script is part of the afs-admin-tools package.  The original Russ
+Allbery version is available is available from the afs-admin-tools web
+page at L<http://www.eyrie.org/~eagle/software/afs-admin-tools/>.
+
+This version is available from L<https://github.com/auristor/afs-admin-tools>.
 
 =cut

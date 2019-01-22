@@ -1,14 +1,21 @@
 #!/usr/bin/make -f
 
 PACKAGE := $(shell dh_listpackages)
+VERSION := $(shell dpkg-parsechangelog | grep ^Version: | cut -d' ' -f2 \
+                | cut -d- -f1)
 
 %:
 	dh $@
 
 override_dh_auto_install:
-	dh_auto_install
 	mkdir -p debian/$(PACKAGE)/etc/afs-admin-tools
 	install -m 644 debian/config/* debian/$(PACKAGE)/etc/afs-admin-tools/
+	mkdir -p debian/$(PACKAGE)/usr/share/man/man1
+	set -e; for script in frak fsr lsmounts mvto partinfo volcreate volcreate-logs volnuke ; do \
+	    pod2man --release=$(VERSION) --section 1 \
+		--center=$(PACKAGE) $${script} \
+		> debian/$(PACKAGE)/usr/share/man/man1/$$script.1 ; \
+	done
 
 override_dh_installchangelogs:
 	dh_installchangelogs NEWS

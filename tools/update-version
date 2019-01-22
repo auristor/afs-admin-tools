@@ -1,0 +1,15 @@
+#!/bin/sh
+#
+# Update the version and date in all of the scripts to match the current
+# release version and date.  Should be called right before make dist when
+# releasing a new version.
+#
+# I should probably rewrite this in Perl for ideological purity.
+
+set -e
+
+version=$(grep '^afs-admin-tools' NEWS | head -1 | cut -d' ' -f 2)
+date=$(grep '^afs-admin-tools' NEWS | head -1 | cut -d' ' -f 3)
+for script in $(grep -ls 'our \$VERSION' [a-z]*) ; do
+    sed -i -e "s!our \$VERSION =.*!our \$VERSION = '$version $date';!" $script
+done
