@@ -1,99 +1,103 @@
-                       afs-admin-tools release 2.0
-                      (utilities for AFS management)
-
-              Maintained by Russ Allbery <rra@stanford.edu>
+                     afs-admin-tools release 2.2
+                    (utilities for AFS management)
+                Author Russ Allbery <eagle@eyrie.org>
+         Maintained by Bill MacAllister <bill@ca-zephyr.org>
 
   These programs are free software; you may redistribute them and/or
-  modify them under the same terms as Perl itself.  Please see the section
-  LICENSE below for more information.
+  modify them under the same terms as Perl itself.  Please see the
+  section LICENSE below for more information.
 
 BLURB
 
-  afs-admin-tools provides a collection of additional utilities to help
-  ease administration of AFS servers, volumes, and directory ACLs.  It
-  includes scripts to report the differences between read-only and
-  read/write volumes; make all fs commands recursive; create, delete, and
-  move volumes more easily than with vos alone; and report AFS server
-  partition usage in a more readable form.
+  afs-admin-tools provides a collection of additional utilities to
+  help ease administration of AFS servers, volumes, and directory
+  ACLs.  It includes scripts to report the differences between
+  read-only and read/write volumes; make all fs commands recursive;
+  create, delete, and move volumes more easily than with vos alone;
+  and report AFS server partition usage in a more readable form.
 
 DESCRIPTION
 
   This is a collection of the additional scripts and utilities we've
-  developed at Stanford University to ease administration of AFS.  It's a
-  bit of a grab-bag of utilities that we've written and tweaked over time.
-  All of them are built around the idea of providing a more powerful
-  command-line interface and are written as wrappers around the regular
-  AFS commands.
+  developed at Stanford University to ease administration of AFS.
+  It's a bit of a grab-bag of utilities that we've written and tweaked
+  over time.  All of them are built around the idea of providing a
+  more powerful command-line interface and are written as wrappers
+  around the regular AFS commands.
 
   frak compares a read/write AFS volume with its read-only replica and
-  reports on all of the differences.  We use this as a sanity check before
-  releasing volumes to ensure we know what's changed.  If you have bundle
-  available, it can optionally create bundles to revert and reapply the
-  changes.
+  reports on all of the differences.  We use this as a sanity check
+  before releasing volumes to ensure we know what's changed.  If you
+  have bundle available, it can optionally create bundles to revert
+  and reapply the changes.
 
-  fsr is a wrapper around the AFS fs command that turns all commands that
-  act on files or directories into recursive commands.  It can be
-  configured to cross or not cross mount points.  It's primarily useful
-  with setacl but is occasionally useful with other commands.
+  fsr is a wrapper around the AFS fs command that turns all commands
+  that act on files or directories into recursive commands.  It can be
+  configured to cross or not cross mount points.  It's primarily
+  useful with setacl but is occasionally useful with other commands.
 
   lsmounts recursively searches through an AFS volume and finds and
   reports on mount points.  It can optionally traverse mount points as
   well to find mount points in volumes mounted under a particular
   directory.
 
-  mvto is a smart vos move that automatically detects where the volume is
-  currently located so that one doesn't have to provide the source
-  location.  It also supports other features handy for automating volume
-  moves, including taking the list of volumes and optionally the list of
-  destinations from a file, automatically handling read/write volumes with
-  read-only replicas on the same server, moving read-only replica volumes,
-  distributing the moved volumes across a set of servers and partitions,
-  and double-checking that there's enough space on a destination partition
-  before moving a volume to it.
+  mvto is a smart vos move that automatically detects where the volume
+  is currently located so that one doesn't have to provide the source
+  location.  It also supports other features handy for automating
+  volume moves, including taking the list of volumes and optionally
+  the list of destinations from a file, automatically handling
+  read/write volumes with read-only replicas on the same server,
+  moving read-only replica volumes, distributing the moved volumes
+  across a set of servers and partitions, and double-checking that
+  there's enough space on a destination partition before moving a
+  volume to it.
 
-  partinfo is a wrapper around vos partinfo that provides more readable
-  output and optionally colorizes it, making it easier to tell at a glance
-  which partitions have free space and which are dangerously full.
+  partinfo is a wrapper around vos partinfo that provides more
+  readable output and optionally colorizes it, making it easier to
+  tell at a glance which partitions have free space and which are
+  dangerously full.
 
   volcreate is a smart vos create that takes a configuration file
   specifying where to put volumes of a particular type.  It can spread
   volumes of a particular type across multiple server partitions to
   balance space usage, can create replicated volumes and ensure that a
-  replica is present in each configured data center, can clone an existing
-  volume when creating a new one, and handles setting ACLs at the same
-  time as creating the volume.  volcreate-logs is a specialized version of
-  volcreate that handles automatically creating date-based log volumes for
-  archiving of system logs.
+  replica is present in each configured data center, can clone an
+  existing volume when creating a new one, and handles setting ACLs at
+  the same time as creating the volume.  volcreate-logs is a
+  specialized version of volcreate that handles automatically creating
+  date-based log volumes for archiving of system logs.
 
-  volnuke is a smart vos remove that can determine the volume to remove
-  from its mount point, can remove any replicas along with the read/write
-  volume, can check whether the volume is still being accessed before
-  removing it, and automatically removes the mount point as well as the
-  volume if run on a mount point.
+  volnuke is a smart vos remove that can determine the volume to
+  remove from its mount point, can remove any replicas along with the
+  read/write volume, can check whether the volume is still being
+  accessed before removing it, and automatically removes the mount
+  point as well as the volume if run on a mount point.
 
   These scripts were originally written by various people at Stanford
-  University over the years, most notably Neil Crellin, Carol Oliver, and
-  Russ Allbery.  They were originally maintained and distributed
+  University over the years, most notably Neil Crellin, Carol Oliver,
+  and Russ Allbery.  They were originally maintained and distributed
   independently, but have been combined into the afs-admin-tools
   distribution so that they can more easily reuse common code.
 
 REQUIREMENTS
 
   All scripts are written in Perl and should work with Perl 5.006 or
-  later.  They require the AFS client binaries be available in either some
-  standard locations (in /usr or /usr/local) or on the PATH.
+  later.  They require the AFS client binaries be available in either
+  some standard locations (in /usr or /usr/local) or on the PATH.
 
-  frak requires Stat::lsMode, available from CPAN.  mvto and volnuke
-  require Date::Parse, available as part of the TimeDate distribution on
-  CPAN.  volcreate-logs requires AFS::Utils (part of the AFS Perl module
-  suite) and an aklog binary if run with a ticket cache specified on the
-  command line.
+  frak requires Stat::lsMode, available from CPAN, and prefers to have
+  a diff program that supports -u (such as GNU diff).  mvto and
+  volnuke require Date::Parse, available as part of the TimeDate
+  distribution on CPAN.  volcreate-logs requires AFS::Utils (part of
+  the AFS Perl module suite), an aklog binary if run with a ticket
+  cache specified on the command line, and a local sendmail command if
+  told to mail reports.
 
-  To run the full test suite, Test::More is required (part of Perl since
-  5.6.2).  It also makes use of additional Perl modules for some tests.
-  These tests will be skipped automatically if the modules aren't
-  available.  To run the full set of default tests, you will need the Perl
-  modules:
+  To run the full test suite, Test::More is required (part of Perl
+  since 5.6.2).  It also makes use of additional Perl modules for some
+  tests.  These tests will be skipped automatically if the modules
+  aren't available.  To run the full set of default tests, you will
+  need the Perl modules:
 
       Test::MinimumVersion
       Test::Pod
@@ -102,23 +106,23 @@ REQUIREMENTS
   and their dependencies.  These modules are all available from CPAN.
 
   Some parts of the test suite are suppressed by default because those
-  tests are normally only useful for the maintainer.  This includes tests
-  of POD spelling and Perl coding style.  To enable those tests, set the
-  environment variable RRA_MAINTAINER_TESTS to a true value.  For these
-  tests, the additional Perl modules:
+  tests are normally only useful for the maintainer.  This includes
+  tests of POD spelling and Perl coding style.  To enable those tests,
+  set the environment variable RRA_MAINTAINER_TESTS to a true value.
+  For these tests, the additional Perl modules:
 
       Test::Spelling
 
-  and their dependencies as well as a spell-checking program (several are
-  supported by Test::Spelling) are required.  These modules are all
-  available from CPAN.
+  and their dependencies as well as a spell-checking program (several
+  are supported by Test::Spelling) are required.  These modules are
+  all available from CPAN.
 
 INSTALLATION
 
-  First, you should read the site configuration section at the beginning
-  of each script before you use it and adjust the configuration paths and
-  settings there for your site.  Many of the scripts come with settings
-  that are somewhat Stanford-specific.
+  First, you should read the site configuration section at the
+  beginning of each script before you use it and adjust the
+  configuration paths and settings there for your site.  Many of the
+  scripts come with settings that are somewhat Stanford-specific.
 
   Then, follow the standard installation procedures for Perl modules,
   which is to type the following commands:
@@ -129,9 +133,9 @@ INSTALLATION
 
   You'll probably need to do the "make install" as root.
 
-  For the time being, you could instead just copy the scripts you want to
-  use to a directory on your PATH.  However, future releases will probably
-  move some shared code to a supporting Perl module.
+  For the time being, you could instead just copy the scripts you want
+  to use to a directory on your PATH.  However, future releases will
+  probably move some shared code to a supporting Perl module.
 
 SUPPORT
 
@@ -142,7 +146,7 @@ SUPPORT
   will always have the current version of this package, the current
   documentation, and pointers to any additional resources.
 
-  I welcome bug reports and patches for this package at rra@stanford.edu.
+  I welcome bug reports and patches for this package at eagle@eyrie.org.
   However, please be aware that I tend to be extremely busy and work
   projects often take priority.  I'll save your mail and get to it as soon
   as I can, but it may take me a couple of months.

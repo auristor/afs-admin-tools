@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # volnuke -- Delete a volume, tracking down what servers it's on.
 #
@@ -9,9 +9,18 @@ our $VERSION = '2.0 (2013-01-15)';
 # replication points.  If the volume is replicated, it also checks to be sure
 # that none of the replicas have been accessed.
 #
-# Written by Russ Allbery <rra@stanford.edu>
+# "These had really struck terror into the hearts of everyone who had
+# encountered them -- in most cases, however, the terror was extremely
+# short-lived, as was the person experiencing the terror."
+#                       -- Douglas Adams, _Life, the Universe, and Everything_
+#
+# Written by Russ Allbery <eagle@eyrie.org>
 # Copyright 2002, 2003, 2004, 2010, 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -32,6 +41,14 @@ use POSIX qw(strftime);
 # Site configuration
 ##############################################################################
 
+# Test to find out whether the server is OpenAFS or YFS
+our $YFS_SERVER;
+if (-e '/etc/yfs') {
+    $YFS_SERVER = 1;
+} else {
+    $YFS_SERVER = 0;
+}
+
 # The full path to fs and vos.  vos may be in an sbin directory, which may
 # not be on the user's path by default, so check there first.
 our $FS = 'fs';
@@ -49,9 +66,10 @@ if (-f '/etc/afs-admin-tools/config') {
 
 # Override system with something that checks return status.
 use subs qw(system);
+
 sub system {
-    CORE::system (@_) == 0
-        or die "$0: @_ failed (status " . ($? >> 8) . ")\n";
+    CORE::system(@_) == 0
+      or die "$0: @_ failed (status " . ($? >> 8) . ")\n";
 }
 
 ##############################################################################
@@ -67,9 +85,10 @@ sub mount_to_name {
     if ($path !~ m%^/%) {
         $path = './' . $path;
     }
-    my $volume = `$FS lsmount '$path'`;
-    die "$0: cannot determine volume from mount point $path\n"
-        unless ($volume =~ /^\S+ is a mount point for volume \'\#(\S+)\'$/);
+    my $volume = `$FS lsmount -dir '$path'`;
+    if (!($volume =~ /^\S+ is a mount point for volume \'\#(\S+)\'$/)) {
+        die "$0: cannot determine volume from mount point $path\n";
+    }
     return $1;
 }
 
@@ -81,21 +100,37 @@ sub mount_to_name {
 # boolean value saying whether there are unreleased changes, and 'accesses'
 # gets an array of access counts.
 sub volinfo {
-    my ($volume, $checkro) = @_;
+    my ($volume) = @_;
+    if ($YFS_SERVER) {
+        return volinfo_yfs($volume);
+    } else {
+        return volinfo_afs($volume);
+    }
+    return;
+}
+
+sub volinfo_afs {
+    my ($volume) = @_;
     my (%results, $rotime, $rwtime);
-    open (VEX, "$VOS examine $volume |")
-        or die "$0: can't fork $VOS examine: $!\n";
+    my $cmd = "$VOS examine -id $volume";
+    open(VEX, "$cmd |") or die "$0: can't fork $VOS examine: $!\n";
     local $_;
     while (<VEX>) {
         if (/^\Q$volume\E\s+\d+ (RW|RO|BK)\s+(\d+) K\s+On-line\s*$/) {
-            die "$0: $volume is $1, not RW\n" unless $1 eq 'RW';
+            if ($1 ne 'RW') {
+                die "$0: $volume is $1, not RW\n";
+            }
             $results{size} = $2;
         } elsif (/^\s+server ([^.\s]+)\.\S+ partition (\S+) RW Site\s*/) {
-            die "$0: saw two RW sites for $volume\n" if $results{rwserver};
+            if ($results{rwserver}) {
+                die "$0: saw two RW sites for $volume\n";
+            }
             $results{rwserver} = $1;
-            $results{rwpart} = $2;
+            $results{rwpart}   = $2;
         } elsif (/^\s+server ([^.\s]+)\.\S+ partition (\S+) RO Site\s*/) {
-            $results{ro}{$1} = $2;
+            my $ro_server = $1;
+            my $ro_part   = $2;
+            $results{ro}{$ro_server} = $ro_part;
             $results{sites}++;
         } elsif (/^\s+Last Update (.*)/) {
             my $tmp = $1;
@@ -103,11 +138,13 @@ sub volinfo {
         }
     }
     close VEX;
-    die "$0: unable to parse vos examine $volume\n"
-        unless ($results{rwserver} && $results{size});
+    if (!($results{rwserver} && $results{size})) {
+        die "$0: unable to parse $cmd\n";
+    }
     if ($results{sites}) {
-        open (VEX, "$VOS examine $volume.readonly |")
-            or die "$0: can't fork $VOS examine for readonly: $!\n";
+        my $cmd_ro = "$VOS examine -id ${volume}.readonly";
+        open(VEX, "$cmd_ro |")
+          or die "$0: can't fork '$cmd_ro' - $!\n";
         while (<VEX>) {
             if (/^\s+Last Update (.*)/) {
                 my $tmp = $1;
@@ -115,11 +152,85 @@ sub volinfo {
             }
             if (/^\s+(\d+) accesses in the past day/) {
                 $results{accesses} ||= [];
-                push (@{ $results{accesses} }, $1);
+                push(@{ $results{accesses} }, $1);
             }
         }
         close VEX;
-        if ($rwtime > $rotime) { $results{unreleased} = 1 }
+        if ($rwtime > $rotime) {
+            $results{unreleased} = 1;
+        }
+    }
+    return %results;
+}
+
+sub volinfo_yfs {
+    my ($volume) = @_;
+    my (%results, $rotime, $rwtime);
+    my $cmd = "$VOS examine -id $volume -format";
+    open(VEX, "$cmd |") or die "$0: can't fork $VOS examine: $!\n";
+    local $_;
+
+    my %av = ();
+    while (<VEX>) {
+        chomp;
+        if (/^(\S+)\t(.*)/xms) {
+            my $attr = $1;
+            my $val  = $2;
+            $av{$attr} = $val;
+        }
+    }
+    close VEX;
+
+    if (!$av{'type'}) {
+        die "ERROR: unable to parse $cmd\n";
+    }
+    if ($av{'type'} ne 'RW') {
+        die "ERROR: volume $volume is $av{'type'}, not RW\n";
+    }
+
+    my $rw_cnt = 0;
+    my $ro_cnt = 0;
+    for (my $i = 0 ; $i < $av{'site_count'} ; $i++) {
+        if ($av{"site_server_$i"} =~ /(\S+)\t(\S+?):(\d+)\t(.*)/xms) {
+            my $ip   = $1;
+            my $fqdn = $2;
+            my $port = $3;
+            my $id   = $4;
+            if ($av{"site_type_$i"} eq 'RW') {
+                $rw_cnt++;
+                $results{'rwserver'} = $fqdn;
+                $results{'rwpart'}   = $av{"site_partition_$i"};
+            }
+            if ($av{"site_type_$i"} eq 'RO') {
+                $results{'ro'}{$fqdn} = $av{"site_partition_$i"};
+                $ro_cnt++;
+            }
+        }
+    }
+
+    $results{sites} = $av{site_count};
+    $results{size}  = $av{maxquota};
+    $rwtime         = $av{updateDate};
+
+    if ($results{sites} > 1) {
+        my $cmd_ro = "$VOS examine -id ${volume}.readonly -format";
+        open(VEX, "$cmd_ro |") or die "$0: can't fork $cmd_ro - $!\n";
+        my %ro_av = ();
+        while (<VEX>) {
+            chomp;
+            if (/^(\S+)\t(.*)/xms) {
+                my $attr = $1;
+                my $val  = $2;
+                $ro_av{$attr} = $val;
+            }
+        }
+        $rotime = $ro_av{updateDate};
+        if ($ro_av{dayUse}) {
+            push(@{ $results{accesses} }, $1);
+        }
+        if ($rwtime > $rotime) {
+            $results{unreleased} = 1;
+        }
     }
     return %results;
 }
@@ -139,46 +250,56 @@ $| = 1;
 my $fullpath = $0;
 $0 =~ s%.*/%%;
 my ($date, $file, $force, $help, $justprint, $mountpoint, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case');
-GetOptions ('date|d'               => \$date,
-            'file|f=s'             => \$file,
-            'force|F'              => \$force,
-            'help|h'               => \$help,
-            'mountpoint|m'         => \$mountpoint,
-            'dry-run|just-print|n' => \$justprint,
-            'version|v'            => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case');
+GetOptions(
+    'date|d'               => \$date,
+    'file|f=s'             => \$file,
+    'force|F'              => \$force,
+    'help|h'               => \$help,
+    'mountpoint|m'         => \$mountpoint,
+    'dry-run|just-print|n' => \$justprint,
+    'version|v'            => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $fullpath);
+    exec('perldoc', '-t', $fullpath);
+    exit 1;
 } elsif ($version) {
     print "volnuke $VERSION\n";
-    exit 0;
+    exit 1;
 }
 
 # Volume name or mount point is always the first argument.  Pull it off and
 # figure out where this volume is.
-usage if (@ARGV != 1);
+if (@ARGV != 1) {
+    usage();
+}
 my $volume;
 if ($mountpoint) {
     $mountpoint = shift;
     $mountpoint =~ s%/+$%%;
-    $volume = mount_to_name ($mountpoint);
+    $volume = mount_to_name($mountpoint);
 } else {
     $volume = shift;
 }
-my %volume = volinfo $volume;
+my %volume = volinfo($volume);
 
 # Report the details about the volume and get confirmation.
 print "\n$volume on $volume{rwserver} $volume{rwpart} ($volume{size} KB)";
-print " with unreleased changes" if $volume{unreleased};
-print "\n";
-for (keys %{ $volume{ro} }) {
-    print "  replica on $_ $volume{ro}{$_}\n";
+if ($volume{unreleased}) {
+    print " with unreleased changes";
 }
-unless ($force) {
+print "\n";
+for my $ro_server (keys %{ $volume{ro} }) {
+    if ($volume{ro}{$ro_server}) {
+        print "  replica on $ro_server $volume{ro}{$ro_server}\n";
+    }
+}
+if (!$force) {
     print "\nContinue (y/N)? ";
     my $response = <STDIN>;
-    exit if ($response !~ /^y/i);
+    if ($response !~ /^y/i) {
+        exit;
+    }
     print "\n";
 }
 if ($volume{accesses} && grep { $_ != 0 } @{ $volume{accesses} }) {
@@ -192,7 +313,9 @@ if ($volume{accesses} && grep { $_ != 0 } @{ $volume{accesses} }) {
     } else {
         print "\nAre you SURE you want to continue (y/N)? ";
         my $response = <STDIN>;
-        exit if ($response !~ /^y/i);
+        if ($response !~ /^y/i) {
+            exit;
+        }
         print "\n";
     }
 }
@@ -200,23 +323,37 @@ if ($volume{accesses} && grep { $_ != 0 } @{ $volume{accesses} }) {
 # Now build the list of commands to run to remove the volume.
 my @commands;
 if ($volume{sites}) {
-    for (keys %{ $volume{ro} }) {
-        push (@commands,
-              [ $VOS, 'remove', $_, $volume{ro}{$_}, "$volume.readonly" ]);
+    for my $ro_server (keys %{ $volume{ro} }) {
+        push(
+            @commands,
+            [
+                $VOS,         'remove',
+                '-server',    $ro_server,
+                '-partition', $volume{ro}{$ro_server},
+                '-id',        "${volume}.readonly"
+            ]
+        );
     }
 }
-push (@commands,
-      [ $VOS, 'remove', $volume{rwserver}, $volume{rwpart}, $volume ]);
+push(
+    @commands,
+    [
+        $VOS,         'remove',        '-server', $volume{rwserver},
+        '-partition', $volume{rwpart}, '-id',     $volume
+    ]
+);
 
 # Okay, run our commands.
 for (@commands) {
     print "@$_\n";
-    unless ($justprint) { system (@$_) }
+    if (!$justprint) {
+        system(@$_);
+    }
 }
 if ($file && !$justprint) {
-    open (LIST, ">> $file") or die "$0: cannot open $file: $!\n";
+    open(LIST, '>>', $file) or die "$0: cannot open $file: $!\n";
     if ($date) {
-        my $date = strftime ('%Y-%m-%d', localtime);
+        my $date = strftime('%Y-%m-%d', localtime);
         print LIST "$date $volume\n";
     } else {
         print LIST $volume, "\n";
@@ -227,8 +364,10 @@ if ($mountpoint) {
     if ($mountpoint !~ m%^/%) {
         $mountpoint = './' . $mountpoint;
     }
-    print "$FS rmmount $mountpoint\n";
-    system ($FS, 'rmmount', $mountpoint) unless $justprint;
+    print "$FS rmmount -dir $mountpoint\n";
+    if (!$justprint) {
+        system($FS, 'rmmount', '-dir', $mountpoint);
+    }
 }
 __END__
 
@@ -350,12 +489,15 @@ accesses.
 
 =head1 AUTHOR
 
-Russ Allbery <rra@stanford.edu>
+Original script by Russ Allbery <eagle@eyrie.org>. Updated with
+Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 2002, 2003, 2004, 2010, 2011 The Board of Trustees of the Leland
 Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.

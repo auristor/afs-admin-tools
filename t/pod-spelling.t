@@ -6,7 +6,7 @@
 # is disabled unless RRA_MAINTAINER_TESTS is set, since spelling dictionaries
 # vary too much between environments.
 #
-# Written by Russ Allbery <rra@stanford.edu>
+# Written by Russ Allbery <eagle@eyrie.org>
 #
 # The authors hereby relinquish any claim to any copyright that they may have
 # in this work, whether granted under contract or by operation of law or
@@ -31,5 +31,15 @@ if (!eval { require Test::Spelling }) {
 }
 Test::Spelling->import;
 
+add_stopwords(<DATA>);
+
 # Check all POD in the distribution.
 all_pod_files_spelling_ok();
+
+__END__
+Allbery
+Auristor
+colorizing
+MacAllister
+nntp
+windlord

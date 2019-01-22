@@ -1,13 +1,17 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.2 (2018-11-23)';
 #
 # fsr -- Recursively apply AFS fs commands.
 #
 # Written by Carol Oliver
-# Portions by Russ Allbery <rra@stanford.edu>
+# Portions by Russ Allbery <eagle@eyrie.org>
 # Inspired by a script written by Larry Schwimmer
 # Copyright 1999, 2004, 2006, 2007, 2008, 2010, 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -34,6 +38,8 @@ BEGIN {
         die "$0 doesn't work with native Windows (but may with Cygwin)\n";
     }
 }
+
+my (%seen);
 
 ##############################################################################
 # Site configuration
@@ -70,21 +76,23 @@ sub parse_fs_command {
     # (and we can suck up everything to the end of the arguments unless
     # there's a flag).  The third value gives the option letter for the option
     # that takes a list of directories.
-    my %commands = (cleanacl  => [undef, 'yes', 'p'],
-                    copyacl   => ['yes', 'yes', 't'],
-                    ca        => ['yes', 'yes', 't'],
-                    examine   => [undef, 'yes', 'p'],
-                    flush     => [undef, 'yes', 'p'],
-                    listacl   => [undef, 'yes', 'p'],
-                    la        => [undef, 'yes', 'p'],
-                    listquota => [undef, 'yes', 'p'],
-                    lq        => [undef, 'yes', 'p'],
-                    lsmount   => [undef, 'yes', 'd'],
-                    setacl    => [undef, undef, 'd'],
-                    sa        => [undef, undef, 'd'],
-                    setquota  => [undef, undef, 'p'],
-                    sq        => [undef, undef, 'p'],
-                    whereis   => [undef, 'yes', 'p']);
+    my %commands = (
+        cleanacl  => [undef, 'yes', 'p'],
+        copyacl   => ['yes', 'yes', 't'],
+        ca        => ['yes', 'yes', 't'],
+        examine   => [undef, 'yes', 'p'],
+        flush     => [undef, 'yes', 'p'],
+        listacl   => [undef, 'yes', 'p'],
+        la        => [undef, 'yes', 'p'],
+        listquota => [undef, 'yes', 'p'],
+        lq        => [undef, 'yes', 'p'],
+        lsmount   => [undef, 'yes', 'd'],
+        setacl    => [undef, undef, 'd'],
+        sa        => [undef, undef, 'd'],
+        setquota  => [undef, undef, 'p'],
+        sq        => [undef, undef, 'p'],
+        whereis   => [undef, 'yes', 'p']
+    );
 
     # These are fs options for various commands that take arguments.  (There
     # are other options that don't take arguments; these are special because
@@ -125,35 +133,43 @@ sub parse_fs_command {
             my $option = $1;
             if ($option eq $props[2]) {
                 $flag = $_;
-                push (@dirs, shift @args) while (@args && $args[0] !~ /^-/);
+                while (@args && $args[0] !~ /^-/) {
+                    push(@dirs, shift @args);
+                }
             } elsif ($options{$option}) {
-                push (@head, $_);
-                push (@head, shift @args)
-                    while (@args && $args[0] !~ /^-/);
+                push(@head, $_);
+                while (@args && $args[0] !~ /^-/) {
+                    push(@head, shift @args);
+                }
                 if ($props[2] eq 't' && $option eq 'f') {
                     $seen_from = 1;
                 }
                 $required = 1;
             } else {
-                push (@head, $_);
+                push(@head, $_);
             }
         } else {
-            push (@tail, $_);
+            push(@tail, $_);
         }
     }
     if (@dirs) {
-        push (@head, $flag);
+        push(@head, $flag);
     } else {
-        push (@head, shift @tail) if ($props[0] && !$seen_from);
-        push (@head, "-$props[2]") if $required;
+        if ($props[0] && !$seen_from) {
+            push(@head, shift @tail);
+        }
+        if ($required) {
+            push(@head, "-$props[2]");
+        }
         if ($props[1]) {
-            push (@dirs, shift @tail)
-                while (@tail && $tail[0] !~ /^-/);
+            while (@tail && $tail[0] !~ /^-/) {
+                push(@dirs, shift @tail);
+            }
         } else {
-            push (@dirs, shift @tail);
+            push(@dirs, shift @tail);
         }
     }
-    unshift (@head, $command);
+    unshift(@head, $command);
     return (\@head, \@dirs, \@tail);
 }
 
@@ -173,11 +189,11 @@ sub ismount {
     if (!defined $pid) {
         die "$0: can't fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDOUT, '> /dev/null') or die "$0: can't open /dev/null: $!\n";
-        open (STDERR, '>&STDOUT') or die "$0: can't dup stdout: $!\n";
-        exec ($FS, 'lsmount', $path) or die "$0: can't exec $FS: $!\n";
+        open(STDOUT, '> /dev/null') or die "$0: can't open /dev/null: $!\n";
+        open(STDERR, '>&STDOUT')    or die "$0: can't dup stdout: $!\n";
+        exec($FS, 'lsmount', $path) or die "$0: can't exec $FS: $!\n";
     } else {
-        waitpid ($pid, 0);
+        waitpid($pid, 0);
     }
     return ($? == 0);
 }
@@ -189,20 +205,22 @@ sub lsmount {
     if ($path =~ /^-/) {
         $path = "./$path";
     }
-    my $pid = open (LSMOUNT, '-|');
+    my $pid = open(LSMOUNT, '-|');
     if (!defined $pid) {
         die "$0: cannot fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
-        exec ($FS, 'lsmount', $path)
-            or die "$0: cannot exec $FS lsmount for $path: $!\n";
+        open(STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
+        exec($FS, 'lsmount', $path)
+          or die "$0: cannot exec $FS lsmount for $path: $!\n";
     }
     local $/;
     my $output = <LSMOUNT>;
     close LSMOUNT;
-    return if ($? != 0);
-    my ($name) =
-        ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
+    if ($? != 0) {
+        return;
+    }
+    my ($name)
+      = ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
     return $name;
 }
 
@@ -210,11 +228,13 @@ sub lsmount {
 # the invocation of find.  Takes the file to operate on, a reference to an
 # array holding the initial part of the fs command, and a reference to an
 # array holding the final part of the fs command.
-my (%seen);
+
 sub run_fs {
     my ($path, $head, $tail) = @_;
-    return if (-l $path || !-d _);
-    unless ($CROSSMOUNTS) {
+    if (-l $path || !-d _) {
+        return;
+    }
+    if (!$CROSSMOUNTS) {
         if (ismount $path) {
             $File::Find::prune = 1;
             return;
@@ -237,8 +257,8 @@ sub run_fs {
     $path = "./$path" if $path =~ /^-/;
 
     print "\nDirectory: $File::Find::name\n" if $VERBOSE;
-    system ($FS, @$head, $path, @$tail) == 0
-        or warn "$0: $FS @$head $path @$tail failed\n";
+    system($FS, @$head, $path, @$tail) == 0
+      or warn "$0: $FS @$head $path @$tail failed\n";
 }
 
 ##########################################################################
@@ -254,20 +274,24 @@ $0 =~ s%.*/%%;
 
 # Parse command line options.
 my ($help, $nomounts, $version);
-Getopt::Long::config ('bundling', 'no_ignore_case', 'require_order');
-GetOptions ('help|h'         => \$help,
-            'no-mounts|M'    => \$nomounts,
-            'cross-mounts|m' => \$CROSSMOUNTS,
-            'verbose|V'      => \$VERBOSE,
-            'version|v'      => \$version) or exit 1;
+Getopt::Long::config('bundling', 'no_ignore_case', 'require_order');
+GetOptions(
+    'help|h'         => \$help,
+    'no-mounts|M'    => \$nomounts,
+    'cross-mounts|m' => \$CROSSMOUNTS,
+    'verbose|V'      => \$VERBOSE,
+    'version|v'      => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
+    exit 1;
 } elsif ($version) {
     print "fsr $VERSION\n";
-    exit 0;
+    exit 1;
 }
-die "Usage: $0 [-hMmVv] <fs-command> [<fs-options>]\n" unless @ARGV;
+if (!@ARGV) {
+    die "Usage: $0 [-hMmVv] <fs-command> [<fs-options>]\n";
+}
 
 # @ARGV now contains the fs command and its options.  We need to parse it out
 # into three lists.  The first contains the fs subcommand and any options that
@@ -279,7 +303,7 @@ die "Usage: $0 [-hMmVv] <fs-command> [<fs-options>]\n" unless @ARGV;
 # that are not directories.  This is not the default fs behavior, which
 # usually is willing to operate on files as well, but otherwise we quietly do
 # nothing since our recursion requires directories.
-my ($head, $dirs, $tail) = parse_fs_command (@ARGV);
+my ($head, $dirs, $tail) = parse_fs_command(@ARGV);
 my %remove;
 for my $dir (@$dirs) {
     if (-l $dir) {
@@ -298,15 +322,19 @@ for my $dir (@$dirs) {
 # If -M was used, we need to filter out any mount points or non-directories
 # from the set of directories provided.
 if ($nomounts) {
-    @$dirs = grep { !ismount ($_) } @$dirs;
+    @$dirs = grep { !ismount($_) } @$dirs;
 }
-die "$0: no directories to process\n" unless @$dirs;
+if (!@$dirs) {
+    die "$0: no directories to process\n";
+}
 
 # Now, do the actual work.  Run find on each of the provided directories,
 # passing in to the function the head and tail of the fs command.
 $File::Find::dont_use_nlink = 1;
-find (sub { run_fs ($_, $head, $tail) }, @$dirs);
+find(sub { run_fs($_, $head, $tail) }, @$dirs);
+
 exit 0;
+
 __END__
 
 ##############################################################################
@@ -450,13 +478,16 @@ B<fsr> ignores symlinks.
 
 =head1 AUTHORS
 
-Written by Russ Allbery <rra@stanford.edu> and Carol Oliver.  Inspired by
-a script written by Larry Schwimmer.
+Written by Russ Allbery <eagle@eyrie.org> and Carol Oliver.  Inspired
+by a script written by Larry Schwimmer.  Updated with Auristor support
+by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1999, 2004, 2006, 2007, 2008, 2010, 2011 The Board of Trustees
 of the Leland Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.
