@@ -119,7 +119,7 @@ sub report {
 # Volume quota checking
 ##############################################################################
 
-# This subroutine takes a quota specification and turn the value in
+# This subroutine takes a quota specification and return the value in
 # kilobytes.  The input is assumed to be megabytes if the units are
 # not specified.
 
@@ -274,9 +274,10 @@ sub find_volume_year {
 # already exist.
 sub create_volume {
     my ($volume, $mountpoint, $quota, $quiet) = @_;
+    my $quota_kbytes = kbytes($quota);
     my $max = kbytes($LOGS_MAX_QUOTA);
-    if ($quota > $max) {
-        my $s = display_kbytes($quota);
+    if ($quota_kbytes > $max) {
+        my $s = display_kbytes($quota_kbytes);
         my $m = display_kbytes($max);
         warn "$volume not created: ${s} exceeds maximum of $m\n";
         return;
@@ -297,18 +298,19 @@ sub create_volume {
     }
 
     # Create the volume.
-    my @command = ('-t', 'logs', $volume, $quota, $mountpoint);
+    my @command = ('-t', 'logs', $volume, $quota_kbytes, $mountpoint);
     if ($quiet) {
         unshift(@command, '-q');
     }
     if (system($VOLCREATE, @command) != 0) {
-        warn "$VOLCREATE -t logs $volume $quota $mountpoint exited with",
-          " status ", ($? >> 8), "\n";
+        warn "$VOLCREATE -t logs $volume $quota_kbytes $mountpoint exited ",
+	  "with status ", ($? >> 8), "\n";
         warn "$volume not fully created, please check\n";
     } else {
-        my $s = display_kbytes($quota);
+        my $s = display_kbytes($quota_kbytes);
         report "Created $volume with quota ${s}\n";
     }
+    return;
 }
 
 # For a yearly log volume, create all of the month subdirectories.  Takes the
