@@ -1,3 +1,10 @@
+afs-admin-tools (2.2-2) unstable; urgency=medium
+
+  * Remove the recommends packages so that this package and be installed
+    on AuristorFS systems.
+
+ -- Bill MacAllister <bill@ca-zephyr.org>  Mon, 29 Apr 2019 02:37:26 +0000
+
 afs-admin-tools (2.2-1) unstable; urgency=medium
 
   * Import new upstream version.

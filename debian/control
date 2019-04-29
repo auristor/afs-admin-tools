@@ -15,7 +15,6 @@ Package: afs-admin-tools
 Architecture: all
 Depends: ${misc:Depends}, ${perl:Depends}, libstat-lsmode-perl,
  libtimedate-perl, openafs-client | auristorfs-client
-Recommends: libafs-perl, openafs-krb5
 Description: Utilities for managing the AFS distributed file system
  AFS is a distributed network file system.  afs-admin-tools provides a
  collection of additional utilities to help ease administration of AFS
