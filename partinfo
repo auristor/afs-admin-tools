@@ -41,10 +41,9 @@ my $opt_human;
 
 # Test to find out whether the server is OpenAFS or YFS
 our $YFS_SERVER;
-if (-e '/etc/yfs') {
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
     $YFS_SERVER = 1;
-} else {
-    $YFS_SERVER = 0;
 }
 
 # The default thresholds.  The first gives the threshold before the partition

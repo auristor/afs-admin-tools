@@ -62,7 +62,7 @@ $VOS ||= 'vos';
 our $LOGS_MAX_QUOTA = '50G';
 
 # Cell root used for validation
-our $CELL_ROOT = '/afs/ir';
+our $CELL_ROOT = '/afs/@cell';
 
 # Load the configuration file if it exists.
 if (-f '/etc/afs-admin-tools/config') {
@@ -658,7 +658,7 @@ F</var/run>.
 
 =item $CELL_ROOT
 
-The root of the AFS cell.  It not specified then /afs/ir is used.
+The root of the AFS cell.  It not specified then /afs/@cell is used.
 
 =item $LOGS_MAX_QUOTA
 
