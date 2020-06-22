@@ -1,5 +1,11 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.3 (2020-06-21)
+
+    This version exists only to ensure that the version in the Debian
+    branch matches the version in the master branch of the source
+    repository.
+    
 afs-admin-tools 2.2 (2018-12-29)
 
     Update scripts to support Auristor as well as AFS.  Re-format
