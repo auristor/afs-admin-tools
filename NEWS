@@ -1,5 +1,33 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.3 (2020-06-21)
+
+    This version exists only to ensure that the version in the Debian
+    branch matches the version in the master branch of the source
+    repository.
+    
+afs-admin-tools 2.2 (2018-12-29)
+
+    Update scripts to support Auristor as well as AFS.  Re-format
+    scripts to follow Perl standards used by the Infrastructure
+    Delivery Group at Stanford.
+
+    Allow the quota units to be specified in creating volumes with
+    volcreate.
+
+    Add --human switch to partinfo to display quotas in human readable
+    form.
+
+    Allow command line arguments to be specified as switches in
+    volcreate.  The original positional behavior is preserved.
+    
+afs-admin-tools 2.1 (unreleased)
+
+    Add a new -A option to mvto, which uses -localauth for all vos
+    commands so that there's no risk of tokens expiring.  This requires
+    running mvto as root on a system with access to the AFS KeyFile.
+    Based on work by Niklas Edmundsson.
+
 afs-admin-tools 2.0 (2013-01-15)
 
     Initial tarball release, based on frak 1.34, fsr 1.14, lsmounts 1.8,

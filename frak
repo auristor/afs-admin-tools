@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.0 (2013-01-15)';
+our $VERSION = '2.3 (2020-06-21)';
 #
 # frak -- Show changes between two AFS trees.
 #
@@ -9,10 +9,17 @@ our $VERSION = '2.0 (2013-01-15)';
 # of the differences so that you can see exactly what will be changed when the
 # volume is released.
 #
+# "Don't be a _little_ paranoid; worry about everything, or let it all go."
+#                                      -- James Alan Gardner, _Trapped_
+#
 # Written by Neil Crellin <neilc@stanford.edu>
-# Updated by Russ Allbery <rra@stanford.edu>
+# Updated by Russ Allbery <eagle@eyrie.org>
 # Copyright 1998, 1999, 2004, 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
+#
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
+# Copyright 2018
+#    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
 # under the same terms as Perl itself.
@@ -26,7 +33,7 @@ use strict;
 use warnings;
 
 use vars qw($CHANGEDIR $CROSSMOUNT $DEBUG $LOGFILE $MUNGE $NODIFF $QUIET
-            $ROOTRO $ROOTRW);
+  $ROOTRO $ROOTRW);
 
 use Cwd qw(cwd);
 use File::Find qw(find);
@@ -70,7 +77,7 @@ sub bundle_quote ( @ ) {
         s/(\\\n)/\'$1\'/g;
         s/^\\\$(ORIG|DEST)/\$$1/;
     }
-    return join (' ', @strings);
+    return join(' ', @strings);
 }
 
 # Given the stat information for a file, return all of the various bundle
@@ -78,8 +85,8 @@ sub bundle_quote ( @ ) {
 sub bundle_mode ( $ ) {
     my ($stat) = @_;
     my @vars = ('owner=' . $stat->uid, 'group=' . $stat->gid);
-    push (@vars, sprintf ('mode=%lo', $stat->mode & 07777));
-    push (@vars, 'atime=' . $stat->atime, 'mtime=' . $stat->mtime);
+    push(@vars, sprintf('mode=%lo', $stat->mode & 07777));
+    push(@vars, 'atime=' . $stat->atime, 'mtime=' . $stat->mtime);
     return @vars;
 }
 
@@ -94,8 +101,8 @@ sub bundle_name ( $$$ ) {
 # given ACL string (in the compressed form that is returned by getacl).
 sub bundle_setacl ( $$ ) {
     my ($name, $acl) = @_;
-    my @acl = split (/=,/, $acl);
-    unshift (@acl, $FS, 'setacl', $name);
+    my @acl = split(/=,/, $acl);
+    unshift(@acl, $FS, 'setacl', $name);
     my $negative;
     @acl = map {
         if (!/^--/ || $negative) {
@@ -104,7 +111,7 @@ sub bundle_setacl ( $$ ) {
             ('-negative', $_);
         }
     } @acl;
-    push (@acl, '-clear');
+    push(@acl, '-clear');
     return @acl;
 }
 
@@ -115,12 +122,16 @@ sub bundle_setacl ( $$ ) {
 # Print a header using equal signs.
 sub header ( $ ) {
     my ($header) = @_;
-    my $space = length ($header) + 4;
-    my $lead = (74 - $space) / 2;
+    my $space    = length($header) + 4;
+    my $lead     = (74 - $space) / 2;
     $header = '  ' . $header . '  ';
     my $out = '=' x $lead . $header . '=' x (74 - $lead - $space) . "\n";
-    print $out unless $QUIET;
-    print LOG $out if $LOGFILE;
+    if (!$QUIET) {
+        print $out;
+    }
+    if ($LOGFILE) {
+        print LOG $out;
+    }
 }
 
 # Add a file to the changed area.  Takes the name of the file and the prefix
@@ -128,26 +139,32 @@ sub header ( $ ) {
 # later revert or apply directives.
 sub changes ( $$ ) {
     my ($file, $type) = @_;
-    return unless $CHANGEDIR;
+    if (!$CHANGEDIR) {
+        return;
+    }
     my $new = $file;
     $new =~ s(^\$(?:ORIG|DEST)) ($type)
-        or die "$0: failed to build file name for $file\n";
-    print CHANGES bundle_quote ('file', $file, $new), "\n";
+      or die "$0: failed to build file name for $file\n";
+    print CHANGES bundle_quote('file', $file, $new), "\n";
     return $new;
 }
 
 # Add something to the revert bundle if appropriate.
 sub revert ( @ ) {
     my (@action) = @_;
-    return unless $CHANGEDIR;
-    print REVERT bundle_quote (@action), "\n";
+    if (!$CHANGEDIR) {
+        return;
+    }
+    print REVERT bundle_quote(@action), "\n";
 }
 
 # Add something to the apply bundle if appropriate.
 sub apply ( @ ) {
     my (@action) = @_;
-    return unless $CHANGEDIR;
-    print APPLY bundle_quote (@action), "\n";
+    if (!$CHANGEDIR) {
+        return;
+    }
+    print APPLY bundle_quote(@action), "\n";
 }
 
 # Return the ls-style file listing for a particular file.  This doesn't do any
@@ -156,14 +173,18 @@ sub apply ( @ ) {
 # modification time display.
 sub lslout ( $;$ ) {
     my ($stat, $nodate) = @_;
-    return "---------- NO SUCH FILE????" unless $stat;
-    my $modestr = format_mode ($stat->mode);
-    my $username = getpwuid ($stat->uid) || $stat->uid;
-    my $groupname = getgrgid ($stat->gid) || $stat->gid;
-    my $lastchanged = strftime ('%Y-%m-%d %T', localtime $stat->mtime);
-    my $output = sprintf ("%s %4d %-8s %-8s %8d", $modestr, $stat->nlink,
-                          $username, $groupname, $stat->size);
-    $output .= " $lastchanged" unless $nodate;
+    if (!$stat) {
+        return "---------- NO SUCH FILE????";
+    }
+    my $modestr     = format_mode($stat->mode);
+    my $username    = getpwuid($stat->uid) || $stat->uid;
+    my $groupname   = getgrgid($stat->gid) || $stat->gid;
+    my $lastchanged = strftime('%Y-%m-%d %T', localtime $stat->mtime);
+    my $output      = sprintf("%s %4d %-8s %-8s %8d",
+        $modestr, $stat->nlink, $username, $groupname, $stat->size);
+    if (!$nodate) {
+        $output .= " $lastchanged";
+    }
     return $output;
 }
 
@@ -177,9 +198,15 @@ sub print_name ( $$;$ ) {
     } else {
         $suffix = '';
     }
-    $name =~ s/^$ROOTRW\E/.../ if $MUNGE;
-    print "$prefix: $name$suffix\n" unless $QUIET;
-    print LOG "$prefix: $name$suffix\n" if $LOGFILE;
+    if ($MUNGE) {
+        $name =~ s/^$ROOTRW/.../;
+    }
+    if (!$QUIET) {
+        print "$prefix: $name$suffix\n";
+    }
+    if ($LOGFILE) {
+        print LOG "$prefix: $name$suffix\n";
+    }
 }
 
 # Print the ls-style file listing for a file, the symlink value, or the mount
@@ -194,19 +221,27 @@ sub print_ls ( $$;$ ) {
     } elsif (defined $$info{volume} && !$forcels) {
         $output = "-> #$$info{volume}";
     } else {
-        $output = lslout ($$info{stat});
+        $output = lslout($$info{stat});
     }
     $output = '  ' . ($prefix ? $prefix . ': ' : '') . $output;
-    print $output, "\n" unless $QUIET;
-    print LOG $output, "\n" if $LOGFILE;
+    if (!$QUIET) {
+        print $output, "\n";
+    }
+    if ($LOGFILE) {
+        print LOG $output, "\n";
+    }
 }
 
 # Print an ACL list, taking a prefix.
 sub print_acl ( $$ ) {
     my ($prefix, $acl) = @_;
     my $output = '  ACL ' . $prefix . ': ' . $acl . "\n";
-    print $output unless $QUIET;
-    print LOG $output if $LOGFILE;
+    if (!$QUIET) {
+        print $output;
+    }
+    if ($LOGFILE) {
+        print LOG $output;
+    }
 }
 
 # Run diff on two files if we're configured to do so and they're both text
@@ -214,35 +249,47 @@ sub print_acl ( $$ ) {
 # print a message saying the output has been suppressed.
 sub print_diff ( $$ ) {
     my ($old, $new) = @_;
-    return '' if $NODIFF;
-    return '' unless (-T $old && -T $new);
+    if ($NODIFF) {
+        return '';
+    }
+    if (!(-T $old && -T $new)) {
+        return '';
+    }
 
     # Fork diff carefully.
-    my $pid = open (DIFF, '-|');
+    my $pid = open(DIFF, '-|');
     if (!defined $pid) {
         die "$0: cannot fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
-        exec ($DIFF, '-u', $old, $new)
-            or die "$0: cannot exec $DIFF -u $old $new: $!\n";
+        open(STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
+        exec($DIFF, '-u', $old, $new)
+          or die "$0: cannot exec $DIFF -u $old $new: $!\n";
     }
 
     # Gather the output.
     local $_;
     my (@diff, $diff);
     while (<DIFF>) {
-        s{(\s)(?:\Q$ROOTRO\E|\Q$ROOTRW\E)} {$1...} if $. <= 2;
-        push (@diff, $_) if $. <= $FRAK_MAXDIFF;
+        if ($. <= 2) {
+            s{(\s)(?:\Q$ROOTRO\E|\Q$ROOTRW\E)} {$1...};
+        }
+        if ($. <= $FRAK_MAXDIFF) {
+            push(@diff, $_);
+        }
     }
     my $output;
     if ($. > $FRAK_MAXDIFF) {
         $output = "    LARGE diff output suppressed, $. lines\n";
     } else {
-        $output = join ('', @diff);
+        $output = join('', @diff);
     }
     close DIFF;
-    print $output unless $QUIET;
-    print LOG $output if $LOGFILE;
+    if (!$QUIET) {
+        print $output;
+    }
+    if ($LOGFILE) {
+        print LOG $output;
+    }
 }
 
 ##############################################################################
@@ -253,21 +300,25 @@ sub print_diff ( $$ ) {
 # undef if it is not a mount point.
 sub lsmount ( $ ) {
     my ($path) = @_;
-    my $pid = open (LSMOUNT, '-|');
+    my $pid = open(LSMOUNT, '-|');
     if (!defined $pid) {
         die "$0: cannot fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
-        exec ($FS, 'lsmount', $path)
-            or die "$0: cannot exec $FS lsmount for $path: $!\n";
+        open(STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
+        exec($FS, 'lsmount', $path)
+          or die "$0: cannot exec $FS lsmount for $path: $!\n";
     }
     local $/;
     my $output = <LSMOUNT>;
     close LSMOUNT;
-    print map { "===> $_ ($?)\n" } split (/\n/, $output) if $DEBUG;
-    return if ($? != 0);
-    my ($name) =
-        ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
+    if ($DEBUG) {
+        print map { "===> $_ ($?)\n" } split(/\n/, $output);
+    }
+    if ($? != 0) {
+        return;
+    }
+    my ($name)
+      = ($output =~ /^\S+ is a mount point for volume \'[%\#](\S+)\'$/);
     return $name;
 }
 
@@ -279,13 +330,13 @@ sub getacl ( $ ) {
     my ($dir) = @_;
 
     # Fork off fs listacl carefully.
-    my $pid = open (LISTACL, '-|');
+    my $pid = open(LISTACL, '-|');
     if (!defined $pid) {
         die "$0: cannot fork: $!\n";
     } elsif ($pid == 0) {
-        open (STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
-        exec ($FS, 'listacl', $dir)
-            or die "$0: cannot exec $FS listacl for $dir: $!\n";
+        open(STDERR, '>&STDOUT') or die "$0: cannot dup stdout: $!\n";
+        exec($FS, 'listacl', $dir)
+          or die "$0: cannot exec $FS listacl for $dir: $!\n";
     }
 
     # Read the results.  The first line is either a header or an error
@@ -300,13 +351,17 @@ sub getacl ( $ ) {
     }
     my ($acl, $prefix) = ('', '');
     while (<LISTACL>) {
-        next if /Normal rights:/;
+        if (/Normal rights:/) {
+            next;
+        }
         if (/Negative rights:/) {
             $prefix = '--';
             next;
         }
         my ($pts, $perms) = split;
-        $perms = 'all' if $perms eq 'rlidwka';
+        if ($perms eq 'rlidwka') {
+            $perms = 'all';
+        }
         $acl .= $prefix . $pts . '=' . $perms . ',';
     }
     close LISTACL;
@@ -335,8 +390,10 @@ sub examine ( $ ) {
     $info{stat} = lstat $file;
     if ($info{stat}) {
         $info{islink} = -l _;
-        $info{isdir} = -d _;
-        $info{link} = readlink $file if $info{islink};
+        $info{isdir}  = -d _;
+        if ($info{islink}) {
+            $info{link} = readlink $file;
+        }
         if ($info{isdir}) {
             $info{volume} = lsmount $file;
             my $isroot = ($file eq $ROOTRW || $file eq $ROOTRO);
@@ -351,123 +408,139 @@ sub examine ( $ ) {
 # Print out the appropriate information for something brand new that has
 # appeared (no corresponding file in the read-only path).
 sub compare_new ( $ ) {
-    print "==> Comparing new file\n" if $DEBUG;
+    if ($DEBUG) {
+        print "==> Comparing new file\n";
+    }
     my %info = %{ $_[0] };
     if ($info{islink}) {
-        print_name ('New link', $info{name});
-        revert ('delete', $info{bname});
-        apply  ('link', $info{link}, $info{bname});
+        print_name('New link', $info{name});
+        revert('delete', $info{bname});
+        apply('link', $info{link}, $info{bname});
     } elsif (defined $info{volume}) {
-        print_name ('New mountpoint', $info{name}, "-> #$info{volume}");
-        revert ('system', $FS, 'rmmount', $info{bname});
-        apply  ('system', $FS, 'mkmount', $info{bname}, $info{volume});
+        print_name('New mountpoint', $info{name}, "-> #$info{volume}");
+        revert('system', $FS, 'rmmount', $info{bname});
+        apply('system', $FS, 'mkmount', $info{bname}, $info{volume});
     } elsif ($info{isdir}) {
-        print_name ('New directory', $info{name});
-        revert ('system', '/bin/rm', '-rf', $info{bname});
-        apply  ('dir', $info{bname}, bundle_mode ($info{stat}));
-        apply  ('system', bundle_setacl ($info{bname}, $info{acl}));
+        print_name('New directory', $info{name});
+        revert('system', '/bin/rm', '-rf', $info{bname});
+        apply('dir', $info{bname}, bundle_mode($info{stat}));
+        apply('system', bundle_setacl($info{bname}, $info{acl}));
     } else {
-        print_name ('New', $info{name});
-        my $saved = changes ($info{bname}, 'new');
-        revert ('delete', $info{bname});
-        apply  ('file', $saved, $info{bname});
+        print_name('New', $info{name});
+        my $saved = changes($info{bname}, 'new');
+        revert('delete', $info{bname});
+        apply('file', $saved, $info{bname});
     }
-    print_ls ('', \%info) unless defined $info{volume};
-    print_acl ('is', $info{acl}) if $info{isdir} && $info{acl};
+    if (!defined $info{volume}) {
+        print_ls('', \%info);
+    }
+    if ($info{isdir} && $info{acl}) {
+        print_acl('is', $info{acl});
+    }
 }
 
 # Print out the appropriate information when the read/write volume has a link.
 # Takes the information for both the read/write and read-only versions.
 sub compare_link ( $$ ) {
-    print "==> Comparing link\n" if $DEBUG;
+    if ($DEBUG) {
+        print "==> Comparing link\n";
+    }
     my %rwinfo = %{ $_[0] };
     my %roinfo = %{ $_[1] };
     if ($roinfo{islink}) {
-        return if $rwinfo{link} eq $roinfo{link};
-        print_name ('Link change', $rwinfo{name});
-        revert ('link', $roinfo{link}, $rwinfo{bname});
-        apply  ('link', $rwinfo{link}, $rwinfo{bname});
+        if ($rwinfo{link} eq $roinfo{link}) {
+            return;
+        }
+        print_name('Link change', $rwinfo{name});
+        revert('link', $roinfo{link}, $rwinfo{bname});
+        apply('link', $rwinfo{link}, $rwinfo{bname});
     } elsif (defined $roinfo{volume}) {
-        print_name ('Mountpoint replaced by link', $rwinfo{name});
-        revert ('delete', $rwinfo{bname});
-        revert ('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
-        apply  ('system', $FS, 'rmmount', $rwinfo{bname});
-        apply  ('link', $rwinfo{link}, $rwinfo{bname});
+        print_name('Mountpoint replaced by link', $rwinfo{name});
+        revert('delete', $rwinfo{bname});
+        revert('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
+        apply('system', $FS, 'rmmount', $rwinfo{bname});
+        apply('link', $rwinfo{link}, $rwinfo{bname});
     } elsif ($roinfo{isdir}) {
-        print_name ('Directory replaced by link', $rwinfo{name});
-        revert ('delete', $rwinfo{bname});
-        revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-        apply  ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        apply  ('link', $rwinfo{link}, $rwinfo{bname});
+        print_name('Directory replaced by link', $rwinfo{name});
+        revert('delete', $rwinfo{bname});
+        revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+        apply('system', '/bin/rm', '-rf', $rwinfo{bname});
+        apply('link', $rwinfo{link}, $rwinfo{bname});
     } else {
-        print_name ('Non-link replaced by link', $rwinfo{name});
-        my $saved = changes ($roinfo{bname}, 'old');
-        revert ('file', $saved, $rwinfo{bname});
-        apply  ('link', $rwinfo{link}, $rwinfo{bname});
+        print_name('Non-link replaced by link', $rwinfo{name});
+        my $saved = changes($roinfo{bname}, 'old');
+        revert('file', $saved, $rwinfo{bname});
+        apply('link', $rwinfo{link}, $rwinfo{bname});
     }
-    print_ls ('WAS', \%roinfo);
-    print_ls ('NOW', \%rwinfo);
+    print_ls('WAS', \%roinfo);
+    print_ls('NOW', \%rwinfo);
 }
 
 # Print out the appropriate information when the read/write volume has a mount
 # point.  Takes the information for both the read/write and read-only
 # versions.
 sub compare_mount ( $$ ) {
-    print "==> Comparing mountpoint\n" if $DEBUG;
+    if ($DEBUG) {
+        print "==> Comparing mountpoint\n";
+    }
     my %rwinfo = %{ $_[0] };
     my %roinfo = %{ $_[1] };
     if ($roinfo{islink}) {
-        print_name ('Link replaced by mountpoint', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        revert ('system', $FS, 'rmmount', $rwinfo{bname});
-        revert ('link', $roinfo{link}, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
-        apply  ('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
+        print_name('Link replaced by mountpoint', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        revert('system', $FS, 'rmmount', $rwinfo{bname});
+        revert('link', $roinfo{link}, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
+        apply('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
     } elsif (defined $roinfo{volume}) {
         if ($rwinfo{volume} ne $roinfo{volume} && $rwinfo{name} ne $ROOTRW) {
-            print_name ('Mountpoint change', $rwinfo{name});
-            print_ls ('WAS', \%roinfo);
-            print_ls ('NOW', \%rwinfo);
-            revert ('system', $FS, 'rmmount', $rwinfo{bname});
-            revert ('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
-            apply  ('system', $FS, 'rmmount', $rwinfo{bname});
-            apply  ('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
+            print_name('Mountpoint change', $rwinfo{name});
+            print_ls('WAS', \%roinfo);
+            print_ls('NOW', \%rwinfo);
+            revert('system', $FS, 'rmmount', $rwinfo{bname});
+            revert('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
+            apply('system', $FS, 'rmmount', $rwinfo{bname});
+            apply('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
         } elsif ($rwinfo{name} eq $ROOTRW || $CROSSMOUNT) {
-            return unless $rwinfo{stat};
-            my $old = lslout ($roinfo{stat}, 1);
-            my $new = lslout ($rwinfo{stat}, 1);
-            if ($new ne $old) {
-                print_name ('Changed directory', $rwinfo{name});
-                print_ls ('WAS', \%roinfo, 1);
-                print_ls ('NOW', \%rwinfo, 1);
-                revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-                apply  ('dir', $rwinfo{bname}, bundle_mode ($rwinfo{stat}));
+            if (!$rwinfo{stat}) {
+                return;
             }
-            return if $rwinfo{acl} eq $roinfo{acl};
-            print_name ('ACL changed', $rwinfo{name});
-            print_acl ('WAS', $roinfo{acl});
-            print_acl ('NOW', $rwinfo{acl});
-            revert ('system', bundle_setacl ($rwinfo{bname}, $roinfo{acl}));
-            apply  ('system', bundle_setacl ($rwinfo{bname}, $rwinfo{acl}));
+            my $old = lslout($roinfo{stat}, 1);
+            my $new = lslout($rwinfo{stat}, 1);
+            if ($new ne $old) {
+                print_name('Changed directory', $rwinfo{name});
+                print_ls('WAS', \%roinfo, 1);
+                print_ls('NOW', \%rwinfo, 1);
+                revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+                apply('dir', $rwinfo{bname}, bundle_mode($rwinfo{stat}));
+            }
+            if ($rwinfo{acl} eq $roinfo{acl}) {
+                return;
+            }
+            print_name('ACL changed', $rwinfo{name});
+            print_acl('WAS', $roinfo{acl});
+            print_acl('NOW', $rwinfo{acl});
+            revert('system', bundle_setacl($rwinfo{bname}, $roinfo{acl}));
+            apply('system', bundle_setacl($rwinfo{bname}, $rwinfo{acl}));
         }
     } elsif ($roinfo{isdir}) {
-        print_name ('Directory replacd by mountpoint', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        revert ('system', $FS, 'rmmount', $rwinfo{bname});
-        revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-        apply  ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        apply  ('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
+        print_name('Directory replacd by mountpoint', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        revert('system', $FS, 'rmmount', $rwinfo{bname});
+        revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+        apply('system', '/bin/rm', '-rf', $rwinfo{bname});
+        apply('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
     } else {
-        print_name ('File replaced by mountpoint', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        my $saved = changes ($roinfo{bname}, 'old');
-        revert ('system', $FS, 'rmmount', $rwinfo{bname});
-        revert ('file', $saved, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
-        apply  ('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
+        print_name('File replaced by mountpoint', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        my $saved = changes($roinfo{bname}, 'old');
+        revert('system', $FS, 'rmmount', $rwinfo{bname});
+        revert('file', $saved, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
+        apply('system', $FS, 'mkmount', $rwinfo{bname}, $rwinfo{volume});
     }
 }
 
@@ -475,51 +548,53 @@ sub compare_mount ( $$ ) {
 # directory.  Takes the information for both the read/write and read-only
 # versions.
 sub compare_dir ( $$ ) {
-    print "==> Comparing directory\n" if $DEBUG;
+    if ($DEBUG) {
+        print "==> Comparing directory\n";
+    }
     my %rwinfo = %{ $_[0] };
     my %roinfo = %{ $_[1] };
     if ($roinfo{islink}) {
-        print_name ('Link replaced by directory', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        revert ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        revert ('link', $roinfo{link}, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
-        apply  ('dir', $rwinfo{bname}, bundle_mode ($rwinfo{stat}));
+        print_name('Link replaced by directory', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        revert('system', '/bin/rm', '-rf', $rwinfo{bname});
+        revert('link', $roinfo{link}, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
+        apply('dir', $rwinfo{bname}, bundle_mode($rwinfo{stat}));
     } elsif (defined $roinfo{volume}) {
-        print_name ('Mountpoint replaced by directory', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        revert ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        revert ('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
-        apply  ('system', $FS, 'rmmount', $rwinfo{bname});
-        apply  ('dir', $rwinfo{bname}, bundle_mode ($rwinfo{stat}));
+        print_name('Mountpoint replaced by directory', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        revert('system', '/bin/rm', '-rf', $rwinfo{bname});
+        revert('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
+        apply('system', $FS, 'rmmount', $rwinfo{bname});
+        apply('dir', $rwinfo{bname}, bundle_mode($rwinfo{stat}));
     } elsif ($roinfo{isdir}) {
-        my $old = lslout ($roinfo{stat}, 1);
-        my $new = lslout ($rwinfo{stat}, 1);
+        my $old = lslout($roinfo{stat}, 1);
+        my $new = lslout($rwinfo{stat}, 1);
         if ($new ne $old) {
-            print_name ('Changed directory', $rwinfo{name});
-            print_ls ('WAS', \%roinfo);
-            print_ls ('NOW', \%rwinfo);
-            revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-            apply  ('dir', $rwinfo{bname}, bundle_mode ($rwinfo{stat}));
+            print_name('Changed directory', $rwinfo{name});
+            print_ls('WAS', \%roinfo);
+            print_ls('NOW', \%rwinfo);
+            revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+            apply('dir', $rwinfo{bname}, bundle_mode($rwinfo{stat}));
         }
         if ($rwinfo{acl} ne $roinfo{acl}) {
-            print_name ('ACL changed', $rwinfo{name});
-            print_acl ('WAS', $roinfo{acl});
-            print_acl ('NOW', $rwinfo{acl});
-            revert ('system', bundle_setacl ($rwinfo{bname}, $roinfo{acl}));
-            apply  ('system', bundle_setacl ($rwinfo{bname}, $rwinfo{acl}));
+            print_name('ACL changed', $rwinfo{name});
+            print_acl('WAS', $roinfo{acl});
+            print_acl('NOW', $rwinfo{acl});
+            revert('system', bundle_setacl($rwinfo{bname}, $roinfo{acl}));
+            apply('system', bundle_setacl($rwinfo{bname}, $rwinfo{acl}));
         }
     } else {
-        print_name ('File replaced by directory', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        my $saved = changes ($roinfo{bname}, 'old');
-        revert ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        revert ('file', $saved, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
-        apply  ('dir', $rwinfo{bname}, bundle_mode ($rwinfo{stat}));
+        print_name('File replaced by directory', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        my $saved = changes($roinfo{bname}, 'old');
+        revert('system', '/bin/rm', '-rf', $rwinfo{bname});
+        revert('file', $saved, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
+        apply('dir', $rwinfo{bname}, bundle_mode($rwinfo{stat}));
     }
 }
 
@@ -527,46 +602,50 @@ sub compare_dir ( $$ ) {
 # regular file.  Takes the information for both the read/write and read-only
 # versions.
 sub compare_file ( $$ ) {
-    print "==> Comparing file\n" if $DEBUG;
+    if ($DEBUG) {
+        print "==> Comparing file\n";
+    }
     my %rwinfo = %{ $_[0] };
     my %roinfo = %{ $_[1] };
     if ($roinfo{islink}) {
-        print_name ('Link replaced by non-link', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        my $saved = changes ($rwinfo{bname}, 'new');
-        revert ('link', $roinfo{link}, $rwinfo{bname});
-        apply  ('file', $saved, $rwinfo{bname});
+        print_name('Link replaced by non-link', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        my $saved = changes($rwinfo{bname}, 'new');
+        revert('link', $roinfo{link}, $rwinfo{bname});
+        apply('file', $saved, $rwinfo{bname});
     } elsif (defined $roinfo{volume}) {
-        print_name ('Mountpoint replaced by file', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        my $saved = changes ($rwinfo{bname}, 'new');
-        revert ('delete', $rwinfo{bname});
-        revert ('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
-        apply  ('system', $FS, 'rmmount', $rwinfo{bname});
-        apply  ('file', $saved, $rwinfo{bname});
+        print_name('Mountpoint replaced by file', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        my $saved = changes($rwinfo{bname}, 'new');
+        revert('delete', $rwinfo{bname});
+        revert('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
+        apply('system', $FS, 'rmmount', $rwinfo{bname});
+        apply('file', $saved, $rwinfo{bname});
     } elsif ($roinfo{isdir}) {
-        print_name ('Directory replaced by file', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        my $saved = changes ($rwinfo{bname}, 'new');
-        revert ('delete', $rwinfo{bname});
-        revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-        apply  ('system', '/bin/rm', '-rf', $rwinfo{bname});
-        apply  ('file', $saved, $rwinfo{bname});
+        print_name('Directory replaced by file', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        my $saved = changes($rwinfo{bname}, 'new');
+        revert('delete', $rwinfo{bname});
+        revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+        apply('system', '/bin/rm', '-rf', $rwinfo{bname});
+        apply('file', $saved, $rwinfo{bname});
     } else {
-        my $newls = lslout ($rwinfo{stat});
-        my $oldls = lslout ($roinfo{stat});
-        return unless $newls ne $oldls;
-        print_name ('Changed', $rwinfo{name});
-        print_ls ('WAS', \%roinfo);
-        print_ls ('NOW', \%rwinfo);
-        print_diff ($roinfo{name}, $rwinfo{name});
-        my $old = changes ($roinfo{bname}, 'old');
-        my $new = changes ($rwinfo{bname}, 'new');
-        revert ('file', $old, $rwinfo{bname});
-        apply  ('file', $new, $rwinfo{bname});
+        my $newls = lslout($rwinfo{stat});
+        my $oldls = lslout($roinfo{stat});
+        if (!($newls ne $oldls)) {
+            return;
+        }
+        print_name('Changed', $rwinfo{name});
+        print_ls('WAS', \%roinfo);
+        print_ls('NOW', \%rwinfo);
+        print_diff($roinfo{name}, $rwinfo{name});
+        my $old = changes($roinfo{bname}, 'old');
+        my $new = changes($rwinfo{bname}, 'new');
+        revert('file', $old, $rwinfo{bname});
+        apply('file', $new, $rwinfo{bname});
     }
 }
 
@@ -574,35 +653,39 @@ sub compare_file ( $$ ) {
 # up file creations and changes, but will not pick up file deletions.  This
 # function is called for each file found in the read/write volume.
 sub analyze_forward {
-    print "=> Inspecting $File::Find::name\n" if $DEBUG;
+    if ($DEBUG) {
+        print "=> Inspecting $File::Find::name\n";
+    }
     my $rw = $File::Find::name;
     my $ro = $rw;
     $ro =~ s(^\Q$ROOTRW\E)($ROOTRO);
-    my %rwinfo = examine ($rw);
-    my %roinfo = examine ($ro);
-    $rwinfo{bname} = bundle_name ($rwinfo{name}, $ROOTRW, 'DEST');
-    $roinfo{bname} = bundle_name ($roinfo{name}, $ROOTRO, 'ORIG');
+    my %rwinfo = examine($rw);
+    my %roinfo = examine($ro);
+    $rwinfo{bname} = bundle_name($rwinfo{name}, $ROOTRW, 'DEST');
+    $roinfo{bname} = bundle_name($roinfo{name}, $ROOTRO, 'ORIG');
 
     # If the stat failed, that probably means that we have a mount point to a
     # volume that doesn't exist.  Handle that case specially.
-    unless ($rwinfo{stat}) {
+    if (!$rwinfo{stat}) {
         $rwinfo{volume} = lsmount $rw;
-        return unless defined $rwinfo{volume};
+        if (!defined $rwinfo{volume}) {
+            return;
+        }
     }
 
     # If this was a mount point, prune here.
     $File::Find::prune = 1
-        if ($rw ne $ROOTRW && $rwinfo{volume} && !$CROSSMOUNT);
+      if ($rw ne $ROOTRW && $rwinfo{volume} && !$CROSSMOUNT);
     $File::Find::prune = 1
-        if ($ro ne $ROOTRO && $roinfo{volume} && !$CROSSMOUNT);
+      if ($ro ne $ROOTRO && $roinfo{volume} && !$CROSSMOUNT);
 
     # Do the analysis, or rather call all the individual functions that do the
     # analysis.
-    if    (!$roinfo{stat})          { compare_new (\%rwinfo)             }
-    elsif ($rwinfo{islink})         { compare_link (\%rwinfo, \%roinfo)  }
-    elsif (defined $rwinfo{volume}) { compare_mount (\%rwinfo, \%roinfo) }
-    elsif ($rwinfo{isdir})          { compare_dir (\%rwinfo, \%roinfo)   }
-    else                            { compare_file (\%rwinfo, \%roinfo)  }
+    if (!$roinfo{stat}) { compare_new(\%rwinfo) }
+    elsif ($rwinfo{islink}) { compare_link(\%rwinfo, \%roinfo) }
+    elsif (defined $rwinfo{volume}) { compare_mount(\%rwinfo, \%roinfo) }
+    elsif ($rwinfo{isdir}) { compare_dir(\%rwinfo, \%roinfo) }
+    else                   { compare_file(\%rwinfo, \%roinfo) }
 }
 
 # Compare in the reverse direction (read-only to read/write).  The only thing
@@ -611,55 +694,61 @@ sub analyze_forward {
 # forward pass).  This function is called for each file found in the read-only
 # volume.
 sub analyze_reverse {
-    print "=> Inspecting $File::Find::name\n" if $DEBUG;
+    if ($DEBUG) {
+        print "=> Inspecting $File::Find::name\n";
+    }
     my $ro = $File::Find::name;
     my $rw = $ro;
     $rw =~ s(^\Q$ROOTRO\E)($ROOTRW);
-    my %rwinfo = examine ($rw);
+    my %rwinfo = examine($rw);
 
     # If this was a mount point, prune here.  Note that we prune based on the
     # read/write path because we want to be able to avoid the stat of the
     # read-only side if the read/write side exists.  Because of the forward
     # pass, this won't cause us to miss anything significant.
-    $File::Find::prune = 1
-        if ($rw ne $ROOTRW && $rwinfo{volume} && !$CROSSMOUNT);
-    return if $rwinfo{stat};
+    if ($rw ne $ROOTRW && $rwinfo{volume} && !$CROSSMOUNT) {
+        $File::Find::prune = 1;
+    }
+    if ($rwinfo{stat}) {
+        return;
+    }
 
     # Now check the read-only side.  We also prune if the read-only side is a
     # mount point, of course.
-    my %roinfo = examine ($ro);
+    my %roinfo = examine($ro);
     $File::Find::prune = 1
-        if ($ro ne $ROOTRO && $roinfo{volume} && !$CROSSMOUNT);
-    $rwinfo{bname} = bundle_name ($rwinfo{name}, $ROOTRW, 'DEST');
-    $roinfo{bname} = bundle_name ($roinfo{name}, $ROOTRO, 'ORIG');
+      if ($ro ne $ROOTRO && $roinfo{volume} && !$CROSSMOUNT);
+    $rwinfo{bname} = bundle_name($rwinfo{name}, $ROOTRW, 'DEST');
+    $roinfo{bname} = bundle_name($roinfo{name}, $ROOTRO, 'ORIG');
 
     # If stat failed, that probably means that we have a mount point to a
     # volume that no longer exists.  Handle that case as a special situation.
-    unless ($roinfo{stat}) {
+    if (!$roinfo{stat}) {
         $roinfo{volume} = lsmount $ro;
-        return unless defined $roinfo{volume};
+        if (!defined $roinfo{volume}) {
+            return;
+        }
     }
 
     # Analyze the difference and report appropriately.
     if ($roinfo{islink}) {
-        print_name ('Deleted link', $rwinfo{name});
-        print_ls ('', \%roinfo);
-        revert ('link', $roinfo{link}, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
+        print_name('Deleted link', $rwinfo{name});
+        print_ls('', \%roinfo);
+        revert('link', $roinfo{link}, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
     } elsif (defined $roinfo{volume}) {
-        print_name ('Deleted mountpoint', $rwinfo{name},
-                    "-> #$roinfo{volume}");
-        revert ('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
-        apply  ('system', $FS, 'rmmount', $rwinfo{bname});
+        print_name('Deleted mountpoint', $rwinfo{name}, "-> #$roinfo{volume}");
+        revert('system', $FS, 'mkmount', $rwinfo{bname}, $roinfo{volume});
+        apply('system', $FS, 'rmmount', $rwinfo{bname});
     } elsif ($roinfo{isdir}) {
-        print_name ('Deleted directory', $rwinfo{name});
-        revert ('dir', $rwinfo{bname}, bundle_mode ($roinfo{stat}));
-        apply  ('system', '/bin/rm', '-rf', $rwinfo{bname});
+        print_name('Deleted directory', $rwinfo{name});
+        revert('dir', $rwinfo{bname}, bundle_mode($roinfo{stat}));
+        apply('system', '/bin/rm', '-rf', $rwinfo{bname});
     } else {
-        print_name ('Deleted', $rwinfo{name});
-        my $saved = changes ($roinfo{bname}, 'old');
-        revert ('file', $saved, $rwinfo{bname});
-        apply  ('delete', $rwinfo{bname});
+        print_name('Deleted', $rwinfo{name});
+        my $saved = changes($roinfo{bname}, 'old');
+        revert('file', $saved, $rwinfo{bname});
+        apply('delete', $rwinfo{bname});
     }
 }
 
@@ -676,61 +765,70 @@ $| = 1;
 
 # Parse our options.
 my ($help, $logfile, $nolog, $version);
-Getopt::Long::config ('bundling');
-GetOptions ('cross-mounts|C'     => \$CROSSMOUNT,
-            'change-dir|c=s'     => \$CHANGEDIR,
-            'debug|D'            => \$DEBUG,
-            'max-diff-lines|d=i' => \$FRAK_MAXDIFF,
-            'help|h'             => \$help,
-            'no-log|L'           => \$nolog,
-            'log-file|l=s'       => \$logfile,
-            'munge|m'            => \$MUNGE,
-            'quiet|q'            => \$QUIET,
-            'suppress-diff|s'    => \$NODIFF,
-            'version|v'          => \$version) or exit 1;
+Getopt::Long::config('bundling');
+GetOptions(
+    'cross-mounts|C'     => \$CROSSMOUNT,
+    'change-dir|c=s'     => \$CHANGEDIR,
+    'debug|D'            => \$DEBUG,
+    'max-diff-lines|d=i' => \$FRAK_MAXDIFF,
+    'help|h'             => \$help,
+    'no-log|L'           => \$nolog,
+    'log-file|l=s'       => \$logfile,
+    'munge|m'            => \$MUNGE,
+    'quiet|q'            => \$QUIET,
+    'suppress-diff|s'    => \$NODIFF,
+    'version|v'          => \$version
+) or exit 1;
 if ($help) {
-    print "Feeding myself to perldoc, please wait....\n";
-    exec ('perldoc', '-t', $fullpath);
+    exec('perldoc', '-t', $fullpath);
+    exit 1;
 } elsif ($version) {
     print "frak $VERSION\n";
-    exit 0;
+    exit 1;
 }
-$LOGFILE = $logfile if $logfile;
+if ($logfile) {
+    $LOGFILE = $logfile;
+}
 
 # Check the directories we're given.  If the -m option is used, we should
 # instead have a single argument naming the volume and will be mounting it in
 # the current directory.
-die "Usage: $0 [-CDhLmqsv] [-c <change>] [-d <n>] [-l <log>] <rw> [<ro>]\n"
-    if (@ARGV > 2 || @ARGV < 1);
+if (@ARGV > 2 || @ARGV < 1) {
+    die "Usage: $0 [-CDhLmqsv] [-c <change>] [-d <n>] [-l <log>] "
+      . "<rw> [<ro>]\n";
+}
 my ($rw, $ro, $volume, $mounted);
 if (@ARGV == 1 && $ARGV[0] !~ m%/%) {
-    $MUNGE = 1;
+    $MUNGE  = 1;
     $volume = $ARGV[0];
     $volume =~ s/\.readonly$//;
     my $rovolume = $volume . '.readonly';
     $rw = "frak-$volume";
     $ro = "frak-$rovolume";
-    system ($FS, 'mkmount', $ro, $rovolume) == 0
-        or die "$0: failed to create mount for $rovolume\n";
-    system ($FS, 'mkmount', '-rw', $rw, $volume) == 0
-        or die "$0: failed to create mount for $volume\n";
+    system($FS, 'mkmount', $ro, $rovolume) == 0
+      or die "$0: failed to create mount for $rovolume\n";
+    system($FS, 'mkmount', '-rw', $rw, $volume) == 0
+      or die "$0: failed to create mount for $volume\n";
     $mounted = 1;
-    $LOGFILE = $volume unless ($nolog || $logfile);
+
+    if (!($nolog || $logfile)) {
+        $LOGFILE = $volume;
+    }
 } else {
     ($rw, $ro) = @ARGV;
     if (@ARGV == 1 && $rw =~ m%/afs/[^.]%) {
         warn "$0: only argument specifies a read-only path, correcting\n";
         $rw =~ s%/afs/%/afs/.%;
     }
-    unless ($ro) {
+    if (!$ro) {
         $ro = $rw;
         $ro =~ s%/afs/\.%/afs/%;
         if ($rw eq $ro) {
             die "$0: cannot intuit read-only path from read/write path\n";
         }
     }
-    $volume = lsmount ($rw);
-    unless (defined $volume) {
+    $volume = lsmount($rw);
+    if (!defined $volume) {
         warn "$0: $rw is not a mountpoint for its volume\n";
     }
 }
@@ -739,58 +837,69 @@ if (@ARGV == 1 && $ARGV[0] !~ m%/%) {
 s%/+$%% for ($rw, $ro);
 
 # Check the validity of the read/write directory.
-die "$0: read/write path $rw not found or not a directory\n"
-    unless -d $rw;
+if (!-d $rw) {
+    die "$0: read/write path $rw not found or not a directory\n";
+}
 
 # Set the global variables.
 ($ROOTRW, $ROOTRO) = ($rw, $ro);
 
 # If a changedir is requested, set up the file handles and files.
 if ($CHANGEDIR) {
-    open (CHANGES, "> $CHANGEDIR/changes.b")
-        or die "$0: cannot create $CHANGEDIR/changes.b: $!\n";
-    open (REVERT, "> $CHANGEDIR/revert.b")
-        or die "$0: cannot create $CHANGEDIR/revert.b: $!\n";
-    open (APPLY, "> $CHANGEDIR/apply.b")
-        or die "$0: cannot create $CHANGEDIR/apply.b: $!\n";
-    mkdir ("$CHANGEDIR/old", 0755)
-        or die "$0: cannot create $CHANGEDIR/old: $!\n";
-    mkdir ("$CHANGEDIR/new", 0755)
-        or die "$0: cannot create $CHANGEDIR/new: $!\n";
-    print CHANGES "ORIG=", bundle_quote ($ROOTRO), "\n";
-    print CHANGES "DEST=", bundle_quote ($ROOTRW), "\n";
-    print REVERT  "ORIG=", bundle_quote ($ROOTRO), "\n";
-    print REVERT  "DEST=", bundle_quote ($ROOTRW), "\n";
-    print APPLY   "ORIG=", bundle_quote ($ROOTRO), "\n";
-    print APPLY   "DEST=", bundle_quote ($ROOTRW), "\n";
+    open(CHANGES, "> $CHANGEDIR/changes.b")
+      or die "$0: cannot create $CHANGEDIR/changes.b: $!\n";
+    open(REVERT, "> $CHANGEDIR/revert.b")
+      or die "$0: cannot create $CHANGEDIR/revert.b: $!\n";
+    open(APPLY, "> $CHANGEDIR/apply.b")
+      or die "$0: cannot create $CHANGEDIR/apply.b: $!\n";
+    mkdir("$CHANGEDIR/old", 0755)
+      or die "$0: cannot create $CHANGEDIR/old: $!\n";
+    mkdir("$CHANGEDIR/new", 0755)
+      or die "$0: cannot create $CHANGEDIR/new: $!\n";
+    print CHANGES "ORIG=", bundle_quote($ROOTRO), "\n";
+    print CHANGES "DEST=", bundle_quote($ROOTRW), "\n";
+    print REVERT "ORIG=",  bundle_quote($ROOTRO), "\n";
+    print REVERT "DEST=",  bundle_quote($ROOTRW), "\n";
+    print APPLY "ORIG=",   bundle_quote($ROOTRO), "\n";
+    print APPLY "DEST=",   bundle_quote($ROOTRW), "\n";
 }
 
 # If a log is requested, create the log file.
 if ($LOGFILE) {
-    open (LOG, "> $LOGFILE")
-        or die "$0: cannot create log file $LOGFILE: $!\n";
+    open(LOG, "> $LOGFILE")
+      or die "$0: cannot create log file $LOGFILE: $!\n";
 }
 
 # Print the header if we have a volume.
-header ($volume) if defined $volume;
+if (defined $volume) {
+    header($volume);
+}
 
 # Do the actual work.
 $File::Find::dont_use_nlink = 1;
-find ({ wanted => \&analyze_forward, no_chdir => 1 }, $ROOTRW);
-print "\n" unless $QUIET;
-print LOG "\n" if $LOGFILE;
-find ({ wanted => \&analyze_reverse, no_chdir => 1 }, $ROOTRO);
-print "\n" unless $QUIET;
-print LOG "\n" if $LOGFILE;
+find({ wanted => \&analyze_forward, no_chdir => 1 }, $ROOTRW);
+if (!$QUIET) {
+    print "\n";
+}
+if ($LOGFILE) {
+    print LOG "\n";
+}
+find({ wanted => \&analyze_reverse, no_chdir => 1 }, $ROOTRO);
+if (!$QUIET) {
+    print "\n";
+}
+if ($LOGFILE) {
+    print LOG "\n";
+}
 
 # Remove the mount points if we created them.  Try to do this even if we
 # exited on error.
 END {
     if ($mounted) {
-        system ($FS, 'rmmount', "frak-$volume.readonly") == 0
-            or warn "$0: cannot remove ro mount point for volume\n";
-        system ($FS, 'rmmount', "frak-$volume") == 0
-            or warn "$0: cannot remove rw mount point for volume\n";
+        system($FS, 'rmmount', "frak-$volume.readonly") == 0
+          or warn "$0: cannot remove ro mount point for volume\n";
+        system($FS, 'rmmount', "frak-$volume") == 0
+          or warn "$0: cannot remove rw mount point for volume\n";
     }
 }
 
@@ -802,7 +911,7 @@ __END__
 
 =for stopwords
 non-AFS AFS -CDhLmqsv Crellin afs-admin-tools changedir frak fs --munge
-ro-path rw-path vos
+ro-path rw-path vos Battlestar Galactica --change-dir
 
 =head1 NAME
 
@@ -865,6 +974,10 @@ the root of the volume.  If a path is specified, paths in the output will
 be complete paths unless B<-m> is given.  If B<-m> is given, paths will be
 relative to the root of the tree specified by the path given on the
 command line.
+
+The name B<frak> comes from the swear word used in I<Battlestar
+Galactica>, which should give you some ideas about the origin of this
+program.
 
 =head1 OPTIONS
 
@@ -1049,12 +1162,15 @@ later, one could run C<apply.b> to replace the changes.
 =head1 AUTHOR
 
 Originally written by Neil Crellin <neilc@stanford.edu>.  Substantially
-reorganized and rewritten by Russ Allbery <rra@stanford.edu>.
+reorganized and rewritten by Russ Allbery <eagle@eyrie.org>. Updated
+with Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 
 =head1 COPYRIGHT AND LICENSE
 
 Copyright 1998, 1999, 2004, 2011 The Board of Trustees of the Leland
 Stanford Junior University.
+
+Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.
@@ -1066,5 +1182,8 @@ L<bundle(1)>, L<diff(1)>
 This script is part of the afs-admin-tools package.  The most recent
 version is available from the afs-admin-tools web page at
 L<http://www.eyrie.org/~eagle/software/afs-admin-tools/>.
+
+B<bundle>, for the B<--change-dir> feature, is available from
+L<http://www.eyrie.org/~eagle/software/bundle/>.
 
 =cut
