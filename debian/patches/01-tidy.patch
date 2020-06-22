@@ -1,0 +1,152 @@
+Index: afs-admin-tools/frak
+===================================================================
+--- afs-admin-tools.orig/frak	2020-06-22 07:26:43.268533663 +0000
++++ afs-admin-tools/frak	2020-06-22 07:26:43.256533100 +0000
+@@ -54,7 +54,7 @@
+ 
+ # The full path to fs and vos.  vos may be in an sbin directory, which may
+ # not be on the user's path by default, so check there first.
+-our $FS = 'fs';
++our $FS  = 'fs';
+ our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
+ $VOS ||= 'vos';
+ 
+@@ -681,11 +681,11 @@
+ 
+     # Do the analysis, or rather call all the individual functions that do the
+     # analysis.
+-    if (!$roinfo{stat}) { compare_new(\%rwinfo) }
+-    elsif ($rwinfo{islink}) { compare_link(\%rwinfo, \%roinfo) }
++    if    (!$roinfo{stat})          { compare_new(\%rwinfo) }
++    elsif ($rwinfo{islink})         { compare_link(\%rwinfo, \%roinfo) }
+     elsif (defined $rwinfo{volume}) { compare_mount(\%rwinfo, \%roinfo) }
+-    elsif ($rwinfo{isdir}) { compare_dir(\%rwinfo, \%roinfo) }
+-    else                   { compare_file(\%rwinfo, \%roinfo) }
++    elsif ($rwinfo{isdir})          { compare_dir(\%rwinfo, \%roinfo) }
++    else                            { compare_file(\%rwinfo, \%roinfo) }
+ }
+ 
+ # Compare in the reverse direction (read-only to read/write).  The only thing
+Index: afs-admin-tools/mvto
+===================================================================
+--- afs-admin-tools.orig/mvto	2020-06-22 07:26:43.268533663 +0000
++++ afs-admin-tools/mvto	2020-06-22 07:26:43.256533100 +0000
+@@ -435,7 +435,7 @@
+     my @to = ($toserver, $topart);
+     my ($fromserver, $frompart) = ($$volinfo{rwserver}, $$volinfo{rwpart});
+     my @from = ($fromserver, $frompart);
+-    my %ro = %{ $$volinfo{ro} };
++    my %ro   = %{ $$volinfo{ro} };
+ 
+     # If the volume is replicated and the read/write is already on the right
+     # server, we won't actually move it.  Just make sure there's also a
+@@ -582,7 +582,7 @@
+ sub move_single {
+     my ($volume, $force, @location) = @_;
+     my @source = findpartition(splice(@location, 0, 2));
+-    my @dest = findpartition(@location);
++    my @dest   = findpartition(@location);
+ 
+     # Get and display information about the volume.
+     my %volinfo = volinfo($volume);
+Index: afs-admin-tools/volcreate
+===================================================================
+--- afs-admin-tools.orig/volcreate	2020-06-22 07:26:43.268533663 +0000
++++ afs-admin-tools/volcreate	2020-06-22 07:26:43.256533100 +0000
+@@ -66,7 +66,7 @@
+ 
+ # The full path to fs and vos.  vos may be in an sbin directory, which may
+ # not be on the user's path by default, so check there first.
+-our $FS = 'fs';
++our $FS  = 'fs';
+ our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
+ $VOS ||= 'vos';
+ 
+Index: afs-admin-tools/volcreate-logs
+===================================================================
+--- afs-admin-tools.orig/volcreate-logs	2020-06-22 07:26:43.268533663 +0000
++++ afs-admin-tools/volcreate-logs	2020-06-22 07:28:38.245929350 +0000
+@@ -54,7 +54,7 @@
+ 
+ # The full path to fs and vos.  vos may be in an sbin directory, which may
+ # not be on the user's path by default, so check there first.
+-our $FS = 'fs';
++our $FS  = 'fs';
+ our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
+ $VOS ||= 'vos';
+ 
+@@ -154,10 +154,10 @@
+ 
+ sub display_kbytes {
+     my ($quota_kbytes) = @_;
+-    my @sizes = ('T', 'G', 'M');
+-    my $quota = "${quota_kbytes}K";
+-    my $i     = $quota_kbytes;
+-    my $u     = 'K';
++    my @sizes          = ('T', 'G', 'M');
++    my $quota          = "${quota_kbytes}K";
++    my $i              = $quota_kbytes;
++    my $u              = 'K';
+     while ($i > 1024) {
+         if (@sizes) {
+             $i     = $i / 1024;
+@@ -244,7 +244,7 @@
+     my ($volume, $path);
+     if (-d "$base/$year/$month") {
+         $volume = lsmount("$base/$year/$month");
+-        $path = "$base/$year/$month" if defined $volume;
++        $path   = "$base/$year/$month" if defined $volume;
+     }
+     return ($volume, $path);
+ }
+@@ -333,7 +333,7 @@
+     my ($year, $month, $config, $quiet) = @_;
+     my ($path, $volume);
+     if ($$config{type} eq 'monthly') {
+-        $path = sprintf("$$config{path}/%04d/%02d", $year, $month);
++        $path   = sprintf("$$config{path}/%04d/%02d", $year, $month);
+         $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
+         if (!-d "$$config{path}/$year") {
+             if ($JUSTPRINT) {
+@@ -345,8 +345,8 @@
+             }
+         }
+     } elsif ($$config{type} eq 'yearly') {
+-        $path = sprintf("$$config{path}/%04d", $year);
+-        $volume = sprintf("%s.%04d", $$config{name}, $year);
++        $path   = sprintf("$$config{path}/%04d", $year);
++        $volume = sprintf("%s.%04d",             $$config{name}, $year);
+     }
+     if (!-d $path) {
+         create_volume($volume, $path, $$config{quota}, $quiet);
+@@ -381,7 +381,7 @@
+             }
+         }
+         my ($key, $value) = split(/:\s+/, $_, 2);
+-        $key =~ s/^\s+//;
++        $key   =~ s/^\s+//;
+         $value =~ s/\s+$//;
+         if (!$value) {
+             warn "Parse error in log group on line $.\n";
+@@ -461,7 +461,7 @@
+         $ticket = $LOGS_TICKETS . '/' . $ticket;
+     }
+     $ENV{KRB5CCNAME} = $ticket;
+-    AFS::Utils::setpag() or die "$0: unable to setpag: $!";
++    AFS::Utils::setpag()      or die "$0: unable to setpag: $!";
+     CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens";
+ }
+ 
+Index: afs-admin-tools/volnuke
+===================================================================
+--- afs-admin-tools.orig/volnuke	2020-06-22 07:26:43.268533663 +0000
++++ afs-admin-tools/volnuke	2020-06-22 07:26:43.256533100 +0000
+@@ -51,7 +51,7 @@
+ 
+ # The full path to fs and vos.  vos may be in an sbin directory, which may
+ # not be on the user's path by default, so check there first.
+-our $FS = 'fs';
++our $FS  = 'fs';
+ our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
+ $VOS ||= 'vos';
+ 
