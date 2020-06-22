@@ -1,13 +1,13 @@
 Source: afs-admin-tools
 Section: net
-Priority: extra
-Build-Depends: debhelper (>= 9), libstat-lsmode-perl,
+Priority: optional
+Build-Depends: debhelper (>= 13), libstat-lsmode-perl,
  libtest-minimumversion-perl, libtest-pod-perl, libtest-strict-perl,
  libtimedate-perl, perl-doc, perltidy
 Maintainer: Bill MacAllister <bill@ca-zephyr.org>
 Bugs: mailto:bill@ca-zephyr.org
 Homepage: https://github.com/auristor/afs-admin-tools
-Standards-Version: 3.9.4
+Standards-Version: 4.5.0
 Vcs-Git: git://github.com/auristor/afs-admin-tools.git
 Vcs-Browser: https://github.com/auristor/afs-admin-tools
 

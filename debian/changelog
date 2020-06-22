@@ -2,6 +2,8 @@ afs-admin-tools (2.3-1) unstable; urgency=medium
 
   * Import new upstream version.
   * Add gbp.conf with a debian-branch of debian.
+  * Update standards version to 4.5.0.  The only change made was to
+    make the priority optional.
 
  -- Bill MacAllister <bill@ca-zephyr.org>  Mon, 22 Jun 2020 01:01:44 +0000
 
