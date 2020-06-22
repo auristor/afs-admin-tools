@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.2 (2018-11-23)';
+our $VERSION = '2.2 (2018-12-29)';
 #
 # lsmounts -- List mountpoints found in a directory.
 #
