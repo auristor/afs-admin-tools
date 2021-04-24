@@ -1,9 +1,11 @@
 # Makefile.PL for afs-admin-tools.
 #
 # Written by Russ Allbery <eagle@eyrie.org>
+# Updated by Bill MacAllister <bill@ca-zephyr.org>
 # Copyright 2011, 2013
 #     The Board of Trustees of the Leland Stanford Junior University
-#
+# Copyright 2021
+#     Bill MacAllister <bill@ca-zephyr.org>
 # See LICENSE for licensing terms.
 
 use 5.006;
@@ -16,8 +18,9 @@ WriteMakefile(
     NAME             => 'afs-admin-tools',
     ABSTRACT         => 'Utilities for AFS management',
     AUTHOR           => 'Russ Allbery <eagle@eyrie.org>',
-    EXE_FILES        => [ qw(frak fsr lsmounts mvto partinfo volcreate
-                             volcreate-logs volnuke) ],
+    EXE_FILES        => [ qw(afs-mkmove-ro afs-mkmove-rw frak fsr 
+                             lsmounts mvto partinfo volcreate
+                             volcreate-logs volnuke ) ],
     VERSION_FROM     => 'VERSION',
     MIN_PERL_VERSION => 5.006,
     dist             => { COMPRESS => 'gzip', SUFFIX => 'gz' },
