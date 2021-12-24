@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.3 (2020-06-21)';
+our $VERSION = '2.4 (2021-21-24)';
 #
 # fsr -- Recursively apply AFS fs commands.
 #
