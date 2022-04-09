@@ -1,7 +1,7 @@
 Index: afs-admin-tools/frak
 ===================================================================
---- afs-admin-tools.orig/frak	2020-06-22 07:26:43.268533663 +0000
-+++ afs-admin-tools/frak	2020-06-22 07:26:43.256533100 +0000
+--- afs-admin-tools.orig/frak	2022-04-09 23:38:13.996416118 +0000
++++ afs-admin-tools/frak	2022-04-09 23:38:13.984415487 +0000
 @@ -54,7 +54,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -29,8 +29,8 @@ Index: afs-admin-tools/frak
  # Compare in the reverse direction (read-only to read/write).  The only thing
 Index: afs-admin-tools/mvto
 ===================================================================
---- afs-admin-tools.orig/mvto	2020-06-22 07:26:43.268533663 +0000
-+++ afs-admin-tools/mvto	2020-06-22 07:26:43.256533100 +0000
+--- afs-admin-tools.orig/mvto	2022-04-09 23:38:13.996416118 +0000
++++ afs-admin-tools/mvto	2022-04-09 23:38:13.984415487 +0000
 @@ -435,7 +435,7 @@
      my @to = ($toserver, $topart);
      my ($fromserver, $frompart) = ($$volinfo{rwserver}, $$volinfo{rwpart});
@@ -51,8 +51,8 @@ Index: afs-admin-tools/mvto
      my %volinfo = volinfo($volume);
 Index: afs-admin-tools/volcreate
 ===================================================================
---- afs-admin-tools.orig/volcreate	2020-06-22 07:26:43.268533663 +0000
-+++ afs-admin-tools/volcreate	2020-06-22 07:26:43.256533100 +0000
+--- afs-admin-tools.orig/volcreate	2022-04-09 23:38:13.996416118 +0000
++++ afs-admin-tools/volcreate	2022-04-09 23:38:13.984415487 +0000
 @@ -66,7 +66,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -64,8 +64,8 @@ Index: afs-admin-tools/volcreate
  
 Index: afs-admin-tools/volcreate-logs
 ===================================================================
---- afs-admin-tools.orig/volcreate-logs	2020-06-22 07:26:43.268533663 +0000
-+++ afs-admin-tools/volcreate-logs	2020-06-22 07:28:38.245929350 +0000
+--- afs-admin-tools.orig/volcreate-logs	2022-04-09 23:38:13.996416118 +0000
++++ afs-admin-tools/volcreate-logs	2022-04-09 23:39:34.380645598 +0000
 @@ -54,7 +54,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -108,17 +108,15 @@ Index: afs-admin-tools/volcreate-logs
          $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
          if (!-d "$$config{path}/$year") {
              if ($JUSTPRINT) {
-@@ -345,8 +345,8 @@
+@@ -345,7 +345,7 @@
              }
          }
      } elsif ($$config{type} eq 'yearly') {
 -        $path = sprintf("$$config{path}/%04d", $year);
--        $volume = sprintf("%s.%04d", $$config{name}, $year);
 +        $path   = sprintf("$$config{path}/%04d", $year);
-+        $volume = sprintf("%s.%04d",             $$config{name}, $year);
+         $volume = sprintf("%s.%04d", $$config{name}, $year);
      }
      if (!-d $path) {
-         create_volume($volume, $path, $$config{quota}, $quiet);
 @@ -381,7 +381,7 @@
              }
          }
@@ -139,8 +137,8 @@ Index: afs-admin-tools/volcreate-logs
  
 Index: afs-admin-tools/volnuke
 ===================================================================
---- afs-admin-tools.orig/volnuke	2020-06-22 07:26:43.268533663 +0000
-+++ afs-admin-tools/volnuke	2020-06-22 07:26:43.256533100 +0000
+--- afs-admin-tools.orig/volnuke	2022-04-09 23:38:13.996416118 +0000
++++ afs-admin-tools/volnuke	2022-04-09 23:38:13.984415487 +0000
 @@ -51,7 +51,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -150,3 +148,16 @@ Index: afs-admin-tools/volnuke
  our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
  $VOS ||= 'vos';
  
+Index: afs-admin-tools/partinfo
+===================================================================
+--- afs-admin-tools.orig/partinfo	2022-04-09 23:38:05.259956419 +0000
++++ afs-admin-tools/partinfo	2022-04-09 23:39:08.211268720 +0000
+@@ -125,7 +125,7 @@
+     my $usable = int($free - ((100 - $PARTINFO_FULL) / 100) * $total);
+     my $pfree  = 100 * $used / $total;
+     my $cstart = $color ? choose_color($pfree) : '';
+-    my $cend   = $color ? color('reset') : '';
++    my $cend   = $color ? color('reset')       : '';
+     my $fmt    = "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n";
+     if ($opt_human) {
+         $total  = human_bytes($total * 1024);
