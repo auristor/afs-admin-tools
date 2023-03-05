@@ -7,7 +7,7 @@ Build-Depends: debhelper (>= 13), libstat-lsmode-perl,
 Maintainer: Bill MacAllister <bill@ca-zephyr.org>
 Bugs: mailto:bill@ca-zephyr.org
 Homepage: https://github.com/auristor/afs-admin-tools
-Standards-Version: 4.5.0
+Standards-Version: 4.6.2
 Vcs-Git: git://github.com/auristor/afs-admin-tools.git
 Vcs-Browser: https://github.com/auristor/afs-admin-tools
 
