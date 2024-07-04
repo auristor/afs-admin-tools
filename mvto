@@ -146,7 +146,7 @@ sub available_space_afs {
         return;
     }
     open(INFO,
-        "$VOS partinfo -server$server -partition $partition $LOCALAUTH |")
+        "$VOS partinfo -server $server -partition $partition $LOCALAUTH |")
       or die "$0: can't fork: $!\n";
     local $_;
     while (<INFO>) {
