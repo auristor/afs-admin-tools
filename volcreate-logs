@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.4 (2021-21-24)';
+our $VERSION = '2.5 (2024-07-17)';
 #
 # volcreate-logs -- Create and grant quota to log volumes in AFS.
 #

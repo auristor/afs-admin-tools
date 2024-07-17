@@ -1,6 +1,10 @@
                    User-Visible afs-admin-tools Changes
 
-afs-admin-tools 2.4 (2021-21-24)
+afs-admin-tools 2.5 (2024-07-17)
+
+    Bug fix release.
+    
+afs-admin-tools 2.4 (2021-12-24)
 
     Correct egregious bug in mvto.
     
