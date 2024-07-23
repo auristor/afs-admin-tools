@@ -1,8 +1,22 @@
 #!/usr/bin/perl
+our $VERSION = '2.6 (2024-07-25)';
+#
+# File: afs-mkmove-ro - Use mvto to move AFS volumes
+#
+# Description: This script can be used to all the volumes from one
+# server to another.  This script processes readonly volumes only.
+#
+# Author: Bill MacAllister <bill@ca-zephyr.org
+#
+# Copyright 2008-2015
+#    The Board of Trustees of the Leland Stanford Junior University
+# Copyright 2018, 2024
+#    Bill MacAllister <bill@ca-zephyr.org>
 
 use Getopt::Long;
 use Pod::Usage;
 use strict;
+use warnings;
 
 use vars qw(
             @inParts
@@ -30,11 +44,11 @@ sub get_datetime {
     if (length($now)==0) {$now = time;}
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($now);
     $mon++;
-    $mon = sprintf ("%02d",$mon);
-    $mday = sprintf ("%02d",$mday);
-    $hour = sprintf ("%02d",$hour);
-    $min = sprintf ("%02d",$min);
-    $sec = sprintf ("%02d",$sec);
+    $mon  = sprintf("%02d", $mon);
+    $mday = sprintf("%02d", $mday);
+    $hour = sprintf("%02d", $hour);
+    $min  = sprintf("%02d", $min);
+    $sec  = sprintf("%02d", $sec);
     $year += 1900;
     return $year.'-'.$mon.'-'.$mday.'-'.$hour.'-'.$min.'-'.$sec;
 }
@@ -61,7 +75,7 @@ sub get_filename {
 
 sub sql_list {
 
-    my $sql = "SELECT server, part, volname, used FROM volumes " 
+    my $sql = "SELECT server, part, volname, used FROM volumes "
         . "WHERE server = '$opt_inserver' "
         . "AND type = 'RO' ";
     if ($opt_inparts) {
@@ -70,7 +84,7 @@ sub sql_list {
         foreach my $p (@inParts) {
             my $qpart = $p;
             $qpart = "/vicep$p" if length($p) == 1;
-            $sql .= "${word}part = '$qpart'"; 
+            $sql .= "${word}part = '$qpart'";
             $word = ' OR ';
         }
         $sql .= ')';
@@ -89,23 +103,23 @@ sub sql_list {
 }
 
 # ---------------------------
-# Read and parse vos listvol output 
+# Read and parse vos listvol output
 
 sub vos_list {
 
     my ($thisFile) = @_;
 
     if (! -e $thisFile) {
-        print "SU-F-FNF, volume list file not found ($thisFile)\n";
+        print("ERROR: volume list file not found ($thisFile)\n");
         exit 1;
     }
 
     my $thisPart = '';
-    open infile, "<$thisFile";
-    while (<infile>) {
+    open(my $infile, '<', $thisFile);
+    while (<$infile>) {
         chomp;
         my $inline = $_;
-        
+
         if ($inline =~ /partition\s+\/vicep(\w+):\s+/) {
             $thisPart = $1;
             next;
@@ -119,14 +133,14 @@ sub vos_list {
         }
     }
 
-    close infile;
+    close $infile;
 }
 
 # ---------------------------
 # Pick a partition
 
 sub pick_partition  {
-    
+
     my ($in_part, $this_size) = @_;
 
     my $return_part = '';
@@ -178,12 +192,12 @@ if ($opt_manual) {
 }
 
 if (length($opt_inserver) == 0) {
-    print "SU-F-SRVREQ, --inserver is required\n";
+    print("ERROR:  --inserver is required\n");
     pod2usage(-verbose => 0);
 }
 
 if (length($opt_outserver) == 0) {
-    print "SU-F-SRVREQ, --outserver is required\n";
+    print("ERROR: --outserver is required\n");
     pod2usage(-verbose => 0);
 }
 
@@ -221,14 +235,14 @@ if ($opt_sqllist) {
         foreach my $p (@inParts) {
             my $list = "vollist-${opt_inserver}-${p}-".get_datetime().".txt";
             my $cmd = "vos listvol $opt_inserver $p > $list";
-            print "Getting a volume list of $opt_inserver $p ...\n";
+            print("Getting a volume list of $opt_inserver $p ...\n");
             system ($cmd);
             vos_list($list);
-        } 
+        }
     } else {
         my $list = "vollist-${opt_inserver}-".get_datetime().".txt";
         my $cmd = "vos listvol $opt_inserver > $list";
-        print "Getting a volume list of $opt_inserver ...\n";
+        print("Getting a volume list of $opt_inserver ...\n");
         system ($cmd);
         vos_list($list);
         unlink $list;
@@ -247,22 +261,22 @@ foreach my $p (@infoLines) {
         if ($thisFree < 1) {next;}
         $serverInfo{$opt_outserver}{$thisPart}{'free'} = $thisFree;
         $serverInfo{$opt_outserver}{$thisPart}{'tot'}  = $thisTot;
-        $serverInfo{$opt_outserver}{$thisPart}{'freelimit'} = 
+        $serverInfo{$opt_outserver}{$thisPart}{'freelimit'} =
             $opt_freelimit * $thisTot;
         $partCnt++;
     }
 }
 
 if ($partCnt == 0) {
-    print "SU-F-NOPARTS, no partition information found.\n";
+    print("ERROR: no partition information found.\n");
     exit 1;
 }
 
 my $outFile = get_filename ($opt_inserver, $opt_outserver);
-open out, ">$outFile";
-print "$outFile opened\n";
-print out "#!/bin/bash\n";
-print out "\n";
+open(my $out, '>', $outFile);
+print("$outFile opened\n");
+print($out "#!/bin/bash\n");
+print($out "\n");
 
 my $cnt = 0;
 foreach my $p (sort keys %inPartInfo) {
@@ -275,32 +289,32 @@ foreach my $p (sort keys %inPartInfo) {
             next;
         }
 
-        print out "echo \" \"\n";
-        print out "echo \"-----------------------------------------\"\n";
-        print out "if [ -e ./stopromove ] \n";
-        print out "    then\n";
-        print out "    echo \"stopromove found.  Exiting.\"\n";
-        print out "    exit\n";
-        print out "else\n";
-        print out "    echo \"stopromove not found---continuing.\"\n";
-        print out "fi\n";
-        printf (out "echo \"Move %d - size %d\"\n", 
+        print($out "echo \" \"\n");
+        print($out "echo \"-----------------------------------------\"\n");
+        print($out "if [ -e ./stopromove ] \n");
+        print($out "    then\n");
+        print($out "    echo \"stopromove found.  Exiting.\"\n");
+        print($out "    exit\n");
+        print($out "else\n");
+        print($out "    echo \"stopromove not found---continuing.\"\n");
+        print($out "fi\n");
+        printf($out "echo \"Move %d - size %d\"\n",
                 $cnt, $inPartInfo{$p}{$v});
-        printf (out "echo \"Moving %s from %s %s to %s %s\"\n",
+        printf($out "echo \"Moving %s from %s %s to %s %s\"\n",
                 $v, $opt_inserver, $p, $opt_outserver, $out_part);
-        print out "date\n";
-        print out "/ncsd/batch/mvto -s $v " 
+        print($out "date\n");
+        print($out "/ncsd/batch/mvto -s $v "
             . "$opt_inserver $p "
-            . "$opt_outserver $out_part \n";
+            . "$opt_outserver $out_part \n");
         $cnt++;
     }
 }
-print out "# \n";
-print out "# $cnt moves in all\n";
+print($out "# \n");
+print($out "# $cnt moves in all\n");
 
-close out;
+close $out;
 
-print "$cnt moves in all.\n";
+print("$cnt moves in all.\n");
 
 if ($opt_update) {
     chmod 0755, $outFile;
@@ -311,16 +325,23 @@ exit;
 
 __END__
 
+##############################################################################
+# Documentation
+##############################################################################
+
+=for stopwords
+LSDB afs listvol mkmove mvto pm ro sqllist vos
+
 =head1 NAME
 
-afs-mkmove-ro.pl
+afs-mkmove-ro
 
 =head1 SYNOPSIS
 
- afs-mkmove-ro.pl --inserver=host [--inparts=partition-list] \
-                  --outserver=host [--outparts=partition-list] \
-                  [--vollist=filename] [--sqllist] \
-                  [--update] [--debug] [--help] [--manual] 
+ afs-mkmove-ro --inserver=host [--inparts=partition-list] \
+                --outserver=host [--outparts=partition-list] \
+                [--vollist=filename] [--sqllist] \
+                [--update] [--debug] [--help] [--manual]
 
 =head1 DESCRIPTION
 
@@ -352,8 +373,8 @@ Name of the destination AFS server.
 A comma separate list of partitions.  Optional.  If not specified then
 the source partition is used.  Note, specifying a target partition
 with out specifying a source partition will move all of the read only
-partitions from the source server to a single partiton on the
-destination server.  
+partitions from the source server to a single partition on the
+destination server.
 
 =item --voslist=filename
 
@@ -376,10 +397,21 @@ Print complete documentation.
 
 =back
 
+=head1 COPYRIGHT
+
+Copyright 2008-2015 The Board of Trustees of the Leland Stanford
+Junior University.
+
+Copyright 2018, 2024 Bill MacAllister <bill@ca-zephyr.org>.
+
+=head1 LICENSE
+
+This program is free software; you may redistribute it and/or modify it
+under the same terms as Perl itself.
+
 =head1 AUTHOR
 
 Bill MacAllister <whm@stanford.edu>
 
 =cut
 
- 

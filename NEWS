@@ -1,5 +1,21 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.6 (2024-07-25)
+
+    * volcreate POD updates
+    * Updates to afs-mkmove-r* scripts
+      - Address warnings caused by using bare words to identify
+        IO handles.
+      - Updates to file header describe the script.
+      - Update copyright and license information.
+      - Add "use warnings"
+    * Restrict strict tests to perl scripts directory
+    * Code cleanup
+    * perltidy updates to scripts
+    * Make sure the Auristor detection executes only after the
+      help display.  This allows help to be run on systems without
+      AFS installed.
+
 afs-admin-tools 2.5 (2024-07-17)
 
     Bug fix release.

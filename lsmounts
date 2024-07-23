@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # lsmounts -- List mountpoints found in a directory.
 #
@@ -27,8 +27,8 @@ use 5.006;
 use strict;
 use warnings;
 
-use Cwd qw(cwd);
-use File::Find qw(find);
+use Cwd          qw(cwd);
+use File::Find   qw(find);
 use Getopt::Long qw(GetOptions);
 
 my $count;

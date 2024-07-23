@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # volnuke -- Delete a volume, tracking down what servers it's on.
 #
@@ -33,24 +33,20 @@ use 5.006;
 use strict;
 use warnings;
 
-use Date::Parse qw(str2time);
+use Date::Parse  qw(str2time);
 use Getopt::Long qw(GetOptions);
-use POSIX qw(strftime);
+use POSIX        qw(strftime);
 
 ##############################################################################
 # Site configuration
 ##############################################################################
 
-# Test to find out whether the server is OpenAFS or YFS
+# If set assumes Auristor syntax
 our $YFS_SERVER;
-my $vos_version = `vos --version`;
-if ($vos_version =~ /^auristor/xms) {
-    $YFS_SERVER = 1;
-}
 
 # The full path to fs and vos.  vos may be in an sbin directory, which may
 # not be on the user's path by default, so check there first.
-our $FS = 'fs';
+our $FS  = 'fs';
 our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
 $VOS ||= 'vos';
 
@@ -272,6 +268,13 @@ if ($help) {
 if (@ARGV != 1) {
     usage();
 }
+
+# Check for AFS flavor
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
+    $YFS_SERVER = 1;
+}
+
 my $volume;
 if ($mountpoint) {
     $mountpoint = shift;

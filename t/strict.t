@@ -29,4 +29,4 @@ Test::Strict->import;
 # Test everything in the distribution directory.  We also want to check use
 # warnings.
 $Test::Strict::TEST_WARNINGS = 1;
-all_perl_files_ok();
+all_perl_files_ok('blib/script');

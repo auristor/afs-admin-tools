@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # volcreate-logs -- Create and grant quota to log volumes in AFS.
 #
@@ -26,7 +26,7 @@ use vars qw($JUSTPRINT $MAIL $MAILOPEN);
 use subs qw(system);
 
 use Getopt::Long qw(GetOptions);
-use POSIX qw(strftime);
+use POSIX        qw(strftime);
 
 # AFS::Utils is loaded to get the setpag function if a ticket cache is
 # specified on the command line.
@@ -54,7 +54,7 @@ our $VOLCREATE = 'volcreate';
 
 # The full path to fs and vos.  vos may be in an sbin directory, which may
 # not be on the user's path by default, so check there first.
-our $FS = 'fs';
+our $FS  = 'fs';
 our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
 $VOS ||= 'vos';
 
@@ -154,10 +154,10 @@ sub kbytes {
 
 sub display_kbytes {
     my ($quota_kbytes) = @_;
-    my @sizes = ('T', 'G', 'M');
-    my $quota = "${quota_kbytes}K";
-    my $i     = $quota_kbytes;
-    my $u     = 'K';
+    my @sizes          = ('T', 'G', 'M');
+    my $quota          = "${quota_kbytes}K";
+    my $i              = $quota_kbytes;
+    my $u              = 'K';
     while ($i > 1024) {
         if (@sizes) {
             $i     = $i / 1024;
@@ -244,7 +244,7 @@ sub find_volume_month {
     my ($volume, $path);
     if (-d "$base/$year/$month") {
         $volume = lsmount("$base/$year/$month");
-        $path = "$base/$year/$month" if defined $volume;
+        $path   = "$base/$year/$month" if defined $volume;
     }
     return ($volume, $path);
 }
@@ -275,7 +275,7 @@ sub find_volume_year {
 sub create_volume {
     my ($volume, $mountpoint, $quota, $quiet) = @_;
     my $quota_kbytes = kbytes($quota);
-    my $max = kbytes($LOGS_MAX_QUOTA);
+    my $max          = kbytes($LOGS_MAX_QUOTA);
     if ($quota_kbytes > $max) {
         my $s = display_kbytes($quota_kbytes);
         my $m = display_kbytes($max);
@@ -304,7 +304,7 @@ sub create_volume {
     }
     if (system($VOLCREATE, @command) != 0) {
         warn "$VOLCREATE -t logs $volume $quota_kbytes $mountpoint exited ",
-	  "with status ", ($? >> 8), "\n";
+          "with status ", ($? >> 8), "\n";
         warn "$volume not fully created, please check\n";
     } else {
         my $s = display_kbytes($quota_kbytes);
@@ -335,7 +335,7 @@ sub create_log_volume {
     my ($year, $month, $config, $quiet) = @_;
     my ($path, $volume);
     if ($$config{type} eq 'monthly') {
-        $path = sprintf("$$config{path}/%04d/%02d", $year, $month);
+        $path   = sprintf("$$config{path}/%04d/%02d", $year, $month);
         $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
         if (!-d "$$config{path}/$year") {
             if ($JUSTPRINT) {
@@ -347,7 +347,7 @@ sub create_log_volume {
             }
         }
     } elsif ($$config{type} eq 'yearly') {
-        $path = sprintf("$$config{path}/%04d", $year);
+        $path   = sprintf("$$config{path}/%04d", $year);
         $volume = sprintf("%s.%04d", $$config{name}, $year);
     }
     if (!-d $path) {
@@ -383,7 +383,7 @@ sub parse_log {
             }
         }
         my ($key, $value) = split(/:\s+/, $_, 2);
-        $key =~ s/^\s+//;
+        $key   =~ s/^\s+//;
         $value =~ s/\s+$//;
         if (!$value) {
             warn "Parse error in log group on line $.\n";
@@ -463,7 +463,7 @@ if ($ticket) {
         $ticket = $LOGS_TICKETS . '/' . $ticket;
     }
     $ENV{KRB5CCNAME} = $ticket;
-    AFS::Utils::setpag() or die "$0: unable to setpag: $!";
+    AFS::Utils::setpag()      or die "$0: unable to setpag: $!";
     CORE::system($AKLOG) == 0 or die "$0: unable to obtain tokens";
 }
 
