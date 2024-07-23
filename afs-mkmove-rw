@@ -1,0 +1,347 @@
+#!/usr/bin/perl
+our $VERSION = '2.5 (2024-07-17)';
+#
+# afs-mkmove-rw - Use mvto to move AFS volumes
+#
+# This script can be used to all the volumes from one server to
+# another.  This script process read/write volumes only.  It moves
+# volumes balanace space among partitions on a server.  The volumes
+# are moved in order from largest to smallest.
+
+use Getopt::Long;
+use Pod::Usage;
+use strict;
+
+use vars qw(
+            $opt_debug
+            $opt_full
+            $opt_help
+            $opt_inserver
+            $opt_inpart
+            $opt_manual
+            $opt_list
+            $opt_outserver
+            $opt_outpart
+            $opt_partlimit
+            $opt_update
+            );
+
+# ---------------------------
+# Get a datetime string
+
+sub get_datetime {
+    my ($now) = @_;
+    if (length($now)==0) {$now = time;}
+    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($now);
+    $mon++;
+    $mon = sprintf ("%02d",$mon);
+    $mday = sprintf ("%02d",$mday);
+    $hour = sprintf ("%02d",$hour);
+    $min = sprintf ("%02d",$min);
+    $sec = sprintf ("%02d",$sec);
+    $year += 1900;
+    return $year.'-'.$mon.'-'.$mday.'-'.$hour.'-'.$min.'-'.$sec;
+}
+
+# ---------------------------
+# Get a unique filename
+
+sub get_filename {
+
+    my ($s, $c) = @_;
+
+    my $cnt = 0;
+    my $outFile = "./move${cnt}-to-".$s.'_'.$c.'.sh';
+    while ( -e $outFile ) {
+        $cnt++;
+        $outFile = "move${cnt}-to-".$s.'_'.$c.'.sh';
+    }
+    return $outFile;
+
+}
+
+# ---------------------------
+# Main Routine
+
+# -- get options
+GetOptions(
+           'debug'       => \$opt_debug,
+           'full=i'      => \$opt_full,
+           'help'        => \$opt_help,
+           'inserver=s'  => \$opt_inserver,
+           'inpart=s'    => \$opt_inpart,
+           'manual'      => \$opt_manual,
+           'list=s'      => \$opt_list,
+           'outserver=s' => \$opt_outserver,
+           'outpart=s'   => \$opt_outpart,
+           'update'      => \$opt_update
+           );
+
+# -- help the poor souls out
+if ($opt_help) {
+    pod2usage(-verbose => 0);
+}
+if ($opt_manual) {
+    pod2usage(-verbose => 2);
+}
+
+if (length($opt_inserver) == 0 && length($opt_list) == 0) {
+    print "AFS-F-INSRVREQ, either --inserver or --list is required\n";
+    pod2usage(-verbose => 0);
+}
+
+if (length($opt_outserver) == 0) {
+    print "AFS-F-SRVREQ, --outserver is required\n";
+    pod2usage(-verbose => 0);
+}
+
+if (length($opt_outpart) == 0) {
+    print "AFS-F-SRVREQ, --outpart is required\n";
+    pod2usage(-verbose => 0);
+}
+
+if (length($opt_full) > 0) {
+    $opt_full = $opt_full/100 if ($opt_full > 1 && $opt_full < 100);
+    $opt_full = .75 if ($opt_full < 1 && $opt_full > 99);
+} else {
+    $opt_full = .75;
+}
+
+if ($opt_inserver > 0)  {$opt_inserver  = "afssvr$opt_inserver";}
+if ($opt_outserver > 0) {$opt_outserver = "afssvr$opt_outserver";}
+
+my $delete_list = '';
+if ($opt_inserver) {
+    $opt_list = "vollist-${opt_inserver}-" 
+        . get_datetime() . ".txt";
+    $delete_list = $opt_list;
+    if (length($opt_inpart) == 0) {
+        my $cmd = "vos listvol $opt_inserver > $opt_list";
+        print "Getting a volume list ...\n";
+        system ($cmd);
+    } else {
+        my @inparts = split ',', $opt_inpart;
+        foreach my $p (@inparts) {
+            my $cmd = "vos listvol $opt_inserver $p >> $opt_list";
+            print "Getting a volume list for $opt_inserver $p ...\n";
+            system ($cmd);
+        }
+    }
+}
+
+my @part_list = split ',',$opt_outpart;
+my %out_part_limit = ();
+my %out_part_size = ();
+
+# get information about each partition
+my $cmd = "vos partinfo $opt_outserver";
+my @r = `$cmd`;
+for my $z (@r) {
+    if ($z =~ /vicep(\w):\s+(\d+)[\sA-Za-z]+(\d+)/) {
+        my $part = $1;
+        my $free = $2;
+        my $totl = $3;
+        my $limit = $opt_full * $totl;
+        # The amount of space we have left on the partition is
+        # the limit - the used.  The used = the total - the free.
+        $out_part_limit{$part} = $limit - ($totl - $free);
+        $out_part_size{$part} = 0;
+    }
+}
+
+open infile, "<$opt_list";
+my %parts = ();    
+while (<infile>) {
+    chomp;
+    my $inline = $_;
+    if ($inline =~ /([\w\d\.\-]+)\s+\d+\s+RW\s+(\d+)\s+\w+\s+On\-line/) {
+        my $thisVol = $1;
+        my $thisSize = $2;
+        my $thisSortKey = sprintf ("%015.0d", $thisSize);
+        $parts{$thisSortKey}{$thisVol} = $thisSize;
+    }
+}
+
+close infile;
+
+my $outOpened = 0;
+my @outFileList = ();
+my $part_index = 0;
+my $done = 0;
+my $this_part = $part_list[0];
+my $cnt = 0;
+
+my $outFile = get_filename($opt_outserver, $this_part);
+push @outFileList, $outFile;
+open out, ">$outFile";
+print "$outFile opened\n";
+print out "#!/bin/bash\n";
+print out "\n";
+print out "# ===============================================\n";
+print out "# space available: $out_part_limit{$this_part} for "
+    . " partition $this_part\n";
+$outOpened = 1;
+
+# Pattern for pulling server info from "vol volinfo" output
+my $patVolinfo = '^\s+server\s+([\w\d]+)\..*?\s+'
+    . 'partition\s+\/vicep(\w+)\s+'
+    . '(RW|RO)\s+Site';
+
+foreach my $sk (keys %parts) {
+    foreach my $v (sort keys %{$parts{$sk}}) {
+        my $this_size = $parts{$sk}{$v};
+        while ($out_part_size{$this_part}+$this_size 
+               > $out_part_limit{$this_part}) {
+            print out "# \n";
+            $part_index++;
+            if ($part_index >= scalar(@part_list)) {
+                print out "# ==============================================\n";
+                print out "# No available space left.  Exiting.\n";
+                print "# ==============================================\n";
+                print "# No available space left.  Exiting.\n";
+                exit;
+            }
+            $this_part = $part_list[$part_index];
+            print out "# ===============================================\n";
+            print out "# space available: $out_part_limit{$this_part} for "
+                . " partition $this_part\n";
+        }
+
+        my @thisInfo = `vos volinfo $v`;
+        my $replicaList = '';
+        foreach my $infoLine (@thisInfo) {
+            if ($infoLine =~ /$patVolinfo/) {
+                my $server = $1;
+                my $part   = $2;
+                my $type   = $3;
+                next if ($opt_inserver  eq $server);
+                next if ($opt_outserver eq $server);
+                next if ($type eq 'RW');
+                $replicaList .= "$server $part ";
+            }
+        }
+
+        $cnt++;
+        $out_part_size{$this_part} += $this_size;
+        print out "echo \" \"\n";
+        print out "echo \"=========================================\"\n";
+        print out "if [ -e ./stopmove ] \n";
+        print out "    then\n";
+        print out "    echo \"stopmove found.  Exiting.\"\n";
+        print out "    exit\n";
+        print out "else\n";
+        print out "    echo \"stopmove not found---continuing.\"\n";
+        print out "fi\n";
+        printf (out "echo \"Moving %s - move %d - size %d\"\n", 
+                $v, $cnt,  $sk);
+        print out "date\n";
+        my $cmd = "/ncsd/batch/mvto $v "
+            . "$opt_outserver $this_part "
+            . $replicaList;
+        print out "echo \"Executing: $cmd\"\n";
+        print out "$cmd\n";
+        
+    }
+}
+
+if ($outOpened) {
+    print out "# \n";
+    print out "# $cnt moves\n";
+    close out;
+    $outOpened = 0;
+}
+
+if ($delete_list) {
+    unlink $delete_list;
+}
+
+print "$cnt moves\n";
+
+if ($opt_update) {
+    chmod 0755, $outFile;
+    system($outFile);
+    unlink $outFile;
+}
+
+exit;
+
+__END__
+
+=head1 NAME
+
+afs-mkmove-rw
+
+=head1 SYNOPSIS
+
+ afs-mkmove-rw --outserver=host --outpart=part-list [--free=percent] \
+               [--inserver=host|--list=vollist] [--inpart=part-list] \
+               [--update] [--debug] [--help] [--manual]
+
+=head1 DESCRIPTION
+
+The script takes in a volume list or in input server and parition list
+and generates a shell script that uses mvto to move AFS volumes to the
+output server and partition list.  Only RW volumes are considered for
+this script.  Volumes are moved to the output paritions in the order
+entered.
+
+=head1 OPTIONS AND ARGUMENTS
+
+=over 4
+
+=item --outserver=hostname
+
+Name of the destination AFS server.
+
+=item --outpart=part-list
+
+A comma separated list of partitions to move volumes to on the output
+server.  Volumes are move to the first partition in the list until
+that partition is --full percent full, and then volume movement
+proceeds to the next parition until the list is exhausted.
+
+=item --full=percent
+
+The percent of available space consumed on a parition that is
+considered full.  Once a parition is full no volumes will be moved to
+it.
+
+This parameter is optional.  The default it 75.
+
+=item --list=filename
+
+A text file containing the output of a vos listvol command.  This
+parameter is optional, but if not specified then --inserver must be
+present.  The parition list is expected to be the output from "vos
+listvol" and can be the concatentation of volume lists from multiple
+servers.
+
+=item --inserver=host
+
+The name of the host to move RW volumes from to the output server.
+
+=item --inpart=part-lists
+
+A comma separated list of parititions to move.
+
+=item --update
+
+Execute the command files generated.
+
+=item --debug
+
+Turns on debugging displays.
+
+=item --manual
+
+Print complete documentation.
+
+=back
+
+=head1 AUTHOR
+
+Bill MacAllister <whm@stanford.edu>
+
+=cut
+
+ 

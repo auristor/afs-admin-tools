@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.2 (2018-11-23)';
+our $VERSION = '2.5 (2024-07-17)';
 #
 # volnuke -- Delete a volume, tracking down what servers it's on.
 #
@@ -43,10 +43,9 @@ use POSIX qw(strftime);
 
 # Test to find out whether the server is OpenAFS or YFS
 our $YFS_SERVER;
-if (-e '/etc/yfs') {
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
     $YFS_SERVER = 1;
-} else {
-    $YFS_SERVER = 0;
 }
 
 # The full path to fs and vos.  vos may be in an sbin directory, which may

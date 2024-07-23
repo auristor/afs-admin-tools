@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.2 (2018-11-23)';
+our $VERSION = '2.5 (2024-07-17)';
 #
 # frak -- Show changes between two AFS trees.
 #
