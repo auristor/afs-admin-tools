@@ -1,7 +1,7 @@
 Index: afs-admin-tools/frak
 ===================================================================
---- afs-admin-tools.orig/frak	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/frak	2023-03-05 19:35:22.936172965 +0000
+--- afs-admin-tools.orig/frak	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/frak	2024-07-23 17:36:17.064011709 +0000
 @@ -35,11 +35,11 @@
  use vars qw($CHANGEDIR $CROSSMOUNT $DEBUG $LOGFILE $MUNGE $NODIFF $QUIET
    $ROOTRO $ROOTRW);
@@ -45,8 +45,8 @@ Index: afs-admin-tools/frak
  # Compare in the reverse direction (read-only to read/write).  The only thing
 Index: afs-admin-tools/mvto
 ===================================================================
---- afs-admin-tools.orig/mvto	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/mvto	2023-03-05 19:36:27.187269312 +0000
+--- afs-admin-tools.orig/mvto	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/mvto	2024-07-23 17:36:17.064011709 +0000
 @@ -36,7 +36,7 @@
  use vars qw($JUSTPRINT);
  use subs qw(system);
@@ -56,7 +56,7 @@ Index: afs-admin-tools/mvto
  use Getopt::Long qw(GetOptions);
  
  # This will be set to -localauth if that flag should be added to vos
-@@ -435,7 +435,7 @@
+@@ -434,7 +434,7 @@
      my @to = ($toserver, $topart);
      my ($fromserver, $frompart) = ($$volinfo{rwserver}, $$volinfo{rwpart});
      my @from = ($fromserver, $frompart);
@@ -65,7 +65,7 @@ Index: afs-admin-tools/mvto
  
      # If the volume is replicated and the read/write is already on the right
      # server, we won't actually move it.  Just make sure there's also a
-@@ -582,7 +582,7 @@
+@@ -581,7 +581,7 @@
  sub move_single {
      my ($volume, $force, @location) = @_;
      my @source = findpartition(splice(@location, 0, 2));
@@ -76,8 +76,8 @@ Index: afs-admin-tools/mvto
      my %volinfo = volinfo($volume);
 Index: afs-admin-tools/volcreate
 ===================================================================
---- afs-admin-tools.orig/volcreate	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/volcreate	2023-03-05 19:34:06.760508610 +0000
+--- afs-admin-tools.orig/volcreate	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/volcreate	2024-07-23 17:36:17.064011709 +0000
 @@ -66,7 +66,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -89,8 +89,8 @@ Index: afs-admin-tools/volcreate
  
 Index: afs-admin-tools/volcreate-logs
 ===================================================================
---- afs-admin-tools.orig/volcreate-logs	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/volcreate-logs	2023-03-05 19:34:06.760508610 +0000
+--- afs-admin-tools.orig/volcreate-logs	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/volcreate-logs	2024-07-23 17:36:17.064011709 +0000
 @@ -26,7 +26,7 @@
  use subs qw(system);
  
@@ -133,7 +133,7 @@ Index: afs-admin-tools/volcreate-logs
      }
      return ($volume, $path);
  }
-@@ -333,7 +333,7 @@
+@@ -335,7 +335,7 @@
      my ($year, $month, $config, $quiet) = @_;
      my ($path, $volume);
      if ($$config{type} eq 'monthly') {
@@ -142,7 +142,7 @@ Index: afs-admin-tools/volcreate-logs
          $volume = sprintf("%s.%04d%02d", $$config{name}, $year, $month);
          if (!-d "$$config{path}/$year") {
              if ($JUSTPRINT) {
-@@ -345,7 +345,7 @@
+@@ -347,7 +347,7 @@
              }
          }
      } elsif ($$config{type} eq 'yearly') {
@@ -151,7 +151,7 @@ Index: afs-admin-tools/volcreate-logs
          $volume = sprintf("%s.%04d", $$config{name}, $year);
      }
      if (!-d $path) {
-@@ -381,7 +381,7 @@
+@@ -383,7 +383,7 @@
              }
          }
          my ($key, $value) = split(/:\s+/, $_, 2);
@@ -160,7 +160,7 @@ Index: afs-admin-tools/volcreate-logs
          $value =~ s/\s+$//;
          if (!$value) {
              warn "Parse error in log group on line $.\n";
-@@ -461,7 +461,7 @@
+@@ -463,7 +463,7 @@
          $ticket = $LOGS_TICKETS . '/' . $ticket;
      }
      $ENV{KRB5CCNAME} = $ticket;
@@ -171,8 +171,8 @@ Index: afs-admin-tools/volcreate-logs
  
 Index: afs-admin-tools/volnuke
 ===================================================================
---- afs-admin-tools.orig/volnuke	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/volnuke	2023-03-05 19:34:06.760508610 +0000
+--- afs-admin-tools.orig/volnuke	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/volnuke	2024-07-23 17:36:17.064011709 +0000
 @@ -33,9 +33,9 @@
  use strict;
  use warnings;
@@ -185,7 +185,7 @@ Index: afs-admin-tools/volnuke
  
  ##############################################################################
  # Site configuration
-@@ -51,7 +51,7 @@
+@@ -50,7 +50,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
  # not be on the user's path by default, so check there first.
@@ -196,9 +196,9 @@ Index: afs-admin-tools/volnuke
  
 Index: afs-admin-tools/partinfo
 ===================================================================
---- afs-admin-tools.orig/partinfo	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/partinfo	2023-03-05 19:34:06.760508610 +0000
-@@ -125,7 +125,7 @@
+--- afs-admin-tools.orig/partinfo	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/partinfo	2024-07-23 17:36:17.064011709 +0000
+@@ -124,7 +124,7 @@
      my $usable = int($free - ((100 - $PARTINFO_FULL) / 100) * $total);
      my $pfree  = 100 * $used / $total;
      my $cstart = $color ? choose_color($pfree) : '';
@@ -209,8 +209,8 @@ Index: afs-admin-tools/partinfo
          $total  = human_bytes($total * 1024);
 Index: afs-admin-tools/fsr
 ===================================================================
---- afs-admin-tools.orig/fsr	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/fsr	2023-03-05 19:34:06.760508610 +0000
+--- afs-admin-tools.orig/fsr	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/fsr	2024-07-23 17:36:17.064011709 +0000
 @@ -26,7 +26,7 @@
  
  use vars qw($CROSSMOUNTS $NOMOUNTS $VERBOSE);
@@ -222,8 +222,8 @@ Index: afs-admin-tools/fsr
  # We fork fs lsmount inside a grep (in File::Find) and expect to be able to do
 Index: afs-admin-tools/lsmounts
 ===================================================================
---- afs-admin-tools.orig/lsmounts	2023-03-05 19:34:06.768508995 +0000
-+++ afs-admin-tools/lsmounts	2023-03-05 19:34:06.760508610 +0000
+--- afs-admin-tools.orig/lsmounts	2024-07-23 17:36:17.076012271 +0000
++++ afs-admin-tools/lsmounts	2024-07-23 17:36:17.064011709 +0000
 @@ -27,8 +27,8 @@
  use strict;
  use warnings;
