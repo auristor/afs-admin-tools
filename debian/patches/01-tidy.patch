@@ -1,7 +1,7 @@
 Index: afs-admin-tools/frak
 ===================================================================
---- afs-admin-tools.orig/frak	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/frak	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/frak	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/frak	2024-07-23 18:28:45.248150740 +0000
 @@ -35,11 +35,11 @@
  use vars qw($CHANGEDIR $CROSSMOUNT $DEBUG $LOGFILE $MUNGE $NODIFF $QUIET
    $ROOTRO $ROOTRW);
@@ -45,8 +45,8 @@ Index: afs-admin-tools/frak
  # Compare in the reverse direction (read-only to read/write).  The only thing
 Index: afs-admin-tools/mvto
 ===================================================================
---- afs-admin-tools.orig/mvto	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/mvto	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/mvto	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/mvto	2024-07-23 18:28:45.248150740 +0000
 @@ -36,7 +36,7 @@
  use vars qw($JUSTPRINT);
  use subs qw(system);
@@ -76,8 +76,8 @@ Index: afs-admin-tools/mvto
      my %volinfo = volinfo($volume);
 Index: afs-admin-tools/volcreate
 ===================================================================
---- afs-admin-tools.orig/volcreate	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/volcreate	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/volcreate	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/volcreate	2024-07-23 18:28:45.248150740 +0000
 @@ -66,7 +66,7 @@
  
  # The full path to fs and vos.  vos may be in an sbin directory, which may
@@ -89,8 +89,8 @@ Index: afs-admin-tools/volcreate
  
 Index: afs-admin-tools/volcreate-logs
 ===================================================================
---- afs-admin-tools.orig/volcreate-logs	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/volcreate-logs	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/volcreate-logs	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/volcreate-logs	2024-07-23 18:29:39.278692856 +0000
 @@ -26,7 +26,7 @@
  use subs qw(system);
  
@@ -133,6 +133,24 @@ Index: afs-admin-tools/volcreate-logs
      }
      return ($volume, $path);
  }
+@@ -275,7 +275,7 @@
+ sub create_volume {
+     my ($volume, $mountpoint, $quota, $quiet) = @_;
+     my $quota_kbytes = kbytes($quota);
+-    my $max = kbytes($LOGS_MAX_QUOTA);
++    my $max          = kbytes($LOGS_MAX_QUOTA);
+     if ($quota_kbytes > $max) {
+         my $s = display_kbytes($quota_kbytes);
+         my $m = display_kbytes($max);
+@@ -304,7 +304,7 @@
+     }
+     if (system($VOLCREATE, @command) != 0) {
+         warn "$VOLCREATE -t logs $volume $quota_kbytes $mountpoint exited ",
+-	  "with status ", ($? >> 8), "\n";
++          "with status ", ($? >> 8), "\n";
+         warn "$volume not fully created, please check\n";
+     } else {
+         my $s = display_kbytes($quota_kbytes);
 @@ -335,7 +335,7 @@
      my ($year, $month, $config, $quiet) = @_;
      my ($path, $volume);
@@ -171,8 +189,8 @@ Index: afs-admin-tools/volcreate-logs
  
 Index: afs-admin-tools/volnuke
 ===================================================================
---- afs-admin-tools.orig/volnuke	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/volnuke	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/volnuke	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/volnuke	2024-07-23 18:28:45.248150740 +0000
 @@ -33,9 +33,9 @@
  use strict;
  use warnings;
@@ -196,8 +214,8 @@ Index: afs-admin-tools/volnuke
  
 Index: afs-admin-tools/partinfo
 ===================================================================
---- afs-admin-tools.orig/partinfo	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/partinfo	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/partinfo	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/partinfo	2024-07-23 18:28:45.248150740 +0000
 @@ -124,7 +124,7 @@
      my $usable = int($free - ((100 - $PARTINFO_FULL) / 100) * $total);
      my $pfree  = 100 * $used / $total;
@@ -209,8 +227,8 @@ Index: afs-admin-tools/partinfo
          $total  = human_bytes($total * 1024);
 Index: afs-admin-tools/fsr
 ===================================================================
---- afs-admin-tools.orig/fsr	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/fsr	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/fsr	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/fsr	2024-07-23 18:28:45.252150928 +0000
 @@ -26,7 +26,7 @@
  
  use vars qw($CROSSMOUNTS $NOMOUNTS $VERBOSE);
@@ -222,8 +240,8 @@ Index: afs-admin-tools/fsr
  # We fork fs lsmount inside a grep (in File::Find) and expect to be able to do
 Index: afs-admin-tools/lsmounts
 ===================================================================
---- afs-admin-tools.orig/lsmounts	2024-07-23 17:36:17.076012271 +0000
-+++ afs-admin-tools/lsmounts	2024-07-23 17:36:17.064011709 +0000
+--- afs-admin-tools.orig/lsmounts	2024-07-23 18:28:45.260151304 +0000
++++ afs-admin-tools/lsmounts	2024-07-23 18:28:45.252150928 +0000
 @@ -27,8 +27,8 @@
  use strict;
  use warnings;

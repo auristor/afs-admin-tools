@@ -1,0 +1,32 @@
+Index: afs-admin-tools/volnuke
+===================================================================
+--- afs-admin-tools.orig/volnuke	2024-07-23 18:22:58.367827711 +0000
++++ afs-admin-tools/volnuke	2024-07-23 18:25:15.922301079 +0000
+@@ -41,12 +41,8 @@
+ # Site configuration
+ ##############################################################################
+ 
+-# Test to find out whether the server is OpenAFS or YFS
++# If set assumes Auristor syntax
+ our $YFS_SERVER;
+-my $vos_version = `vos --version`;
+-if ($vos_version =~ /^auristor/xms) {
+-    $YFS_SERVER = 1;
+-}
+ 
+ # The full path to fs and vos.  vos may be in an sbin directory, which may
+ # not be on the user's path by default, so check there first.
+@@ -272,6 +268,13 @@
+ if (@ARGV != 1) {
+     usage();
+ }
++
++# Check for AFS flavor
++my $vos_version = `vos --version`;
++if ($vos_version =~ /^auristor/xms) {
++    $YFS_SERVER = 1;
++}
++
+ my $volume;
+ if ($mountpoint) {
+     $mountpoint = shift;

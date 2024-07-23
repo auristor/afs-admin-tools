@@ -1,0 +1,31 @@
+Index: afs-admin-tools/mvto
+===================================================================
+--- afs-admin-tools.orig/mvto	2024-07-23 17:49:40.105609616 +0000
++++ afs-admin-tools/mvto	2024-07-23 17:54:07.834224706 +0000
+@@ -43,12 +43,8 @@
+ # commands.
+ our $LOCALAUTH = '';
+ 
+-# Test to find out whether the server is OpenAFS or YFS
++# If set the script assumes Auristor AFS
+ our $YFS_SERVER;
+-my $vos_version = `vos --version`;
+-if ($vos_version =~ /^auristor/xms) {
+-    $YFS_SERVER = 1;
+-}
+ 
+ ##############################################################################
+ # Site configuration
+@@ -688,6 +684,12 @@
+     $LOCALAUTH = '-localauth';
+ }
+ 
++# Set the AFS style
++my $vos_version = `vos --version`;
++if ($vos_version =~ /^auristor/xms) {
++    $YFS_SERVER = 1;
++}
++
+ # Volume name is always the first argument unless -l or -L was given, and the
+ # rest of our arguments must be server and partition pairs.
+ my $volume;
