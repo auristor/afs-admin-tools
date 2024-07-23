@@ -1,5 +1,13 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.5 (2024-07-17)
+
+    Bug fix release.
+    
+afs-admin-tools 2.4 (2021-12-24)
+
+    Correct egregious bug in mvto.
+    
 afs-admin-tools 2.3 (2020-06-21)
 
     This version exists only to ensure that the version in the Debian

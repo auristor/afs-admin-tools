@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.3 (2020-06-21)';
+our $VERSION = '2.5 (2024-07-17)';
 #
 # mvto -- Move an AFS volume from anywhere, intelligently.
 #
@@ -146,7 +146,7 @@ sub available_space_afs {
         return;
     }
     open(INFO,
-        "$VOS partinfo -server$server -partition $partition $LOCALAUTH |")
+        "$VOS partinfo -server $server -partition $partition $LOCALAUTH |")
       or die "$0: can't fork: $!\n";
     local $_;
     while (<INFO>) {
@@ -266,7 +266,7 @@ sub volinfo_yfs {
     my %results = ();
 
     my $cmd = "$VOS examine -id $volume -format";
-    open(VEX, " |")
+    open(VEX, "$cmd |")
       or die "$0: can't fork '$cmd' - $!\n";
     local $_;
 
