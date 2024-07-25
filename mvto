@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # mvto -- Move an AFS volume from anywhere, intelligently.
 #
@@ -36,19 +36,15 @@ use warnings;
 use vars qw($JUSTPRINT);
 use subs qw(system);
 
-use Date::Parse qw(str2time);
+use Date::Parse  qw(str2time);
 use Getopt::Long qw(GetOptions);
 
 # This will be set to -localauth if that flag should be added to vos
 # commands.
 our $LOCALAUTH = '';
 
-# Test to find out whether the server is OpenAFS or YFS
+# If set the script assumes Auristor AFS
 our $YFS_SERVER;
-my $vos_version = `vos --version`;
-if ($vos_version =~ /^auristor/xms) {
-    $YFS_SERVER = 1;
-}
 
 ##############################################################################
 # Site configuration
@@ -434,7 +430,7 @@ sub move_rw {
     my @to = ($toserver, $topart);
     my ($fromserver, $frompart) = ($$volinfo{rwserver}, $$volinfo{rwpart});
     my @from = ($fromserver, $frompart);
-    my %ro = %{ $$volinfo{ro} };
+    my %ro   = %{ $$volinfo{ro} };
 
     # If the volume is replicated and the read/write is already on the right
     # server, we won't actually move it.  Just make sure there's also a
@@ -581,7 +577,7 @@ sub move_volume {
 sub move_single {
     my ($volume, $force, @location) = @_;
     my @source = findpartition(splice(@location, 0, 2));
-    my @dest = findpartition(@location);
+    my @dest   = findpartition(@location);
 
     # Get and display information about the volume.
     my %volinfo = volinfo($volume);
@@ -686,6 +682,12 @@ if ($help) {
 }
 if ($LOCALAUTH) {
     $LOCALAUTH = '-localauth';
+}
+
+# Set the AFS style
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
+    $YFS_SERVER = 1;
 }
 
 # Volume name is always the first argument unless -l or -L was given, and the

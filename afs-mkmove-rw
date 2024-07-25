@@ -1,16 +1,25 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
-# afs-mkmove-rw - Use mvto to move AFS volumes
+# File: afs-mkmove-rw - Use mvto to move AFS volumes
 #
-# This script can be used to all the volumes from one server to
-# another.  This script process read/write volumes only.  It moves
-# volumes balanace space among partitions on a server.  The volumes
-# are moved in order from largest to smallest.
+# Description: This script can be used to all the volumes from one
+# server to another.  This script processes read/write volumes only.
+# It moves volumes and balances space among partitions on the target
+# server.  The volumes are moved in order from largest to smallest.
+#
+# Author: Bill MacAllister <bill@ca-zephyr.org
+#
+# Copyright 2008-2015
+#    The Board of Trustees of the Leland Stanford Junior University
+# Copyright 2018, 2024
+#    Bill MacAllister <bill@ca-zephyr.org>
+#
 
 use Getopt::Long;
 use Pod::Usage;
 use strict;
+use warnings;
 
 use vars qw(
             $opt_debug
@@ -34,11 +43,11 @@ sub get_datetime {
     if (length($now)==0) {$now = time;}
     my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($now);
     $mon++;
-    $mon = sprintf ("%02d",$mon);
-    $mday = sprintf ("%02d",$mday);
-    $hour = sprintf ("%02d",$hour);
-    $min = sprintf ("%02d",$min);
-    $sec = sprintf ("%02d",$sec);
+    $mon  = sprintf("%02d", $mon);
+    $mday = sprintf("%02d", $mday);
+    $hour = sprintf("%02d", $hour);
+    $min  = sprintf("%02d", $min);
+    $sec  = sprintf("%02d", $sec);
     $year += 1900;
     return $year.'-'.$mon.'-'.$mday.'-'.$hour.'-'.$min.'-'.$sec;
 }
@@ -86,17 +95,17 @@ if ($opt_manual) {
 }
 
 if (length($opt_inserver) == 0 && length($opt_list) == 0) {
-    print "AFS-F-INSRVREQ, either --inserver or --list is required\n";
+    print("ERROR: either --inserver or --list is required\n");
     pod2usage(-verbose => 0);
 }
 
 if (length($opt_outserver) == 0) {
-    print "AFS-F-SRVREQ, --outserver is required\n";
+    print("ERROR: --outserver is required\n");
     pod2usage(-verbose => 0);
 }
 
 if (length($opt_outpart) == 0) {
-    print "AFS-F-SRVREQ, --outpart is required\n";
+    print("ERROR: --outpart is required\n");
     pod2usage(-verbose => 0);
 }
 
@@ -117,13 +126,13 @@ if ($opt_inserver) {
     $delete_list = $opt_list;
     if (length($opt_inpart) == 0) {
         my $cmd = "vos listvol $opt_inserver > $opt_list";
-        print "Getting a volume list ...\n";
+        print("Getting a volume list ...\n");
         system ($cmd);
     } else {
         my @inparts = split ',', $opt_inpart;
         foreach my $p (@inparts) {
             my $cmd = "vos listvol $opt_inserver $p >> $opt_list";
-            print "Getting a volume list for $opt_inserver $p ...\n";
+            print("Getting a volume list for $opt_inserver $p ...\n");
             system ($cmd);
         }
     }
@@ -138,9 +147,9 @@ my $cmd = "vos partinfo $opt_outserver";
 my @r = `$cmd`;
 for my $z (@r) {
     if ($z =~ /vicep(\w):\s+(\d+)[\sA-Za-z]+(\d+)/) {
-        my $part = $1;
-        my $free = $2;
-        my $totl = $3;
+        my $part  = $1;
+        my $free  = $2;
+        my $totl  = $3;
         my $limit = $opt_full * $totl;
         # The amount of space we have left on the partition is
         # the limit - the used.  The used = the total - the free.
@@ -149,9 +158,9 @@ for my $z (@r) {
     }
 }
 
-open infile, "<$opt_list";
+open(my $infile, '<', $opt_list);
 my %parts = ();    
-while (<infile>) {
+while (<$infile>) {
     chomp;
     my $inline = $_;
     if ($inline =~ /([\w\d\.\-]+)\s+\d+\s+RW\s+(\d+)\s+\w+\s+On\-line/) {
@@ -162,7 +171,7 @@ while (<infile>) {
     }
 }
 
-close infile;
+close $infile;
 
 my $outOpened = 0;
 my @outFileList = ();
@@ -173,13 +182,13 @@ my $cnt = 0;
 
 my $outFile = get_filename($opt_outserver, $this_part);
 push @outFileList, $outFile;
-open out, ">$outFile";
-print "$outFile opened\n";
-print out "#!/bin/bash\n";
-print out "\n";
-print out "# ===============================================\n";
-print out "# space available: $out_part_limit{$this_part} for "
-    . " partition $this_part\n";
+open(my $out, '>', $outFile);
+print("$outFile opened\n");
+print($out "#!/bin/bash\n");
+print($out "\n");
+print($out "# ===============================================\n");
+print($out "# space available: $out_part_limit{$this_part} for "
+    . " partition $this_part\n");
 $outOpened = 1;
 
 # Pattern for pulling server info from "vol volinfo" output
@@ -192,19 +201,19 @@ foreach my $sk (keys %parts) {
         my $this_size = $parts{$sk}{$v};
         while ($out_part_size{$this_part}+$this_size 
                > $out_part_limit{$this_part}) {
-            print out "# \n";
+            print($out "# \n");
             $part_index++;
             if ($part_index >= scalar(@part_list)) {
-                print out "# ==============================================\n";
-                print out "# No available space left.  Exiting.\n";
-                print "# ==============================================\n";
-                print "# No available space left.  Exiting.\n";
+                print($out "# ==============================================\n");
+                print($out "# No available space left.  Exiting.\n");
+                print("# ==============================================\n");
+                print("# No available space left.  Exiting.\n");
                 exit;
             }
             $this_part = $part_list[$part_index];
-            print out "# ===============================================\n";
-            print out "# space available: $out_part_limit{$this_part} for "
-                . " partition $this_part\n";
+            print($out "# ===============================================\n");
+            print($out "# space available: $out_part_limit{$this_part} for "
+                . " partition $this_part\n");
         }
 
         my @thisInfo = `vos volinfo $v`;
@@ -223,31 +232,31 @@ foreach my $sk (keys %parts) {
 
         $cnt++;
         $out_part_size{$this_part} += $this_size;
-        print out "echo \" \"\n";
-        print out "echo \"=========================================\"\n";
-        print out "if [ -e ./stopmove ] \n";
-        print out "    then\n";
-        print out "    echo \"stopmove found.  Exiting.\"\n";
-        print out "    exit\n";
-        print out "else\n";
-        print out "    echo \"stopmove not found---continuing.\"\n";
-        print out "fi\n";
-        printf (out "echo \"Moving %s - move %d - size %d\"\n", 
+        print($out "echo \" \"\n");
+        print($out "echo \"=========================================\"\n");
+        print($out "if [ -e ./stopmove ] \n");
+        print($out "    then\n");
+        print($out "    echo \"stopmove found.  Exiting.\"\n");
+        print($out "    exit\n");
+        print($out "else\n");
+        print($out "    echo \"stopmove not found---continuing.\"\n");
+        print($out "fi\n");
+        printf ($out "echo \"Moving %s - move %d - size %d\"\n", 
                 $v, $cnt,  $sk);
-        print out "date\n";
+        print($out "date\n");
         my $cmd = "/ncsd/batch/mvto $v "
             . "$opt_outserver $this_part "
             . $replicaList;
-        print out "echo \"Executing: $cmd\"\n";
-        print out "$cmd\n";
+        print($out "echo \"Executing: $cmd\"\n");
+        print($out "$cmd\n");
         
     }
 }
 
 if ($outOpened) {
-    print out "# \n";
-    print out "# $cnt moves\n";
-    close out;
+    print($out "# \n");
+    print($out "# $cnt moves\n");
+    close $out;
     $outOpened = 0;
 }
 
@@ -255,7 +264,7 @@ if ($delete_list) {
     unlink $delete_list;
 }
 
-print "$cnt moves\n";
+print("$cnt moves\n");
 
 if ($opt_update) {
     chmod 0755, $outFile;
@@ -266,6 +275,13 @@ if ($opt_update) {
 exit;
 
 __END__
+
+##############################################################################
+# Documentation
+##############################################################################
+
+=for stopwords
+afs inserver listvol mkmove mvto rw vos
 
 =head1 NAME
 
@@ -279,10 +295,10 @@ afs-mkmove-rw
 
 =head1 DESCRIPTION
 
-The script takes in a volume list or in input server and parition list
+The script takes in a volume list or in input server and partition list
 and generates a shell script that uses mvto to move AFS volumes to the
 output server and partition list.  Only RW volumes are considered for
-this script.  Volumes are moved to the output paritions in the order
+this script.  Volumes are moved to the output partitions in the order
 entered.
 
 =head1 OPTIONS AND ARGUMENTS
@@ -298,12 +314,12 @@ Name of the destination AFS server.
 A comma separated list of partitions to move volumes to on the output
 server.  Volumes are move to the first partition in the list until
 that partition is --full percent full, and then volume movement
-proceeds to the next parition until the list is exhausted.
+proceeds to the next partition until the list is exhausted.
 
 =item --full=percent
 
-The percent of available space consumed on a parition that is
-considered full.  Once a parition is full no volumes will be moved to
+The percent of available space consumed on a partition that is
+considered full.  Once a partition is full no volumes will be moved to
 it.
 
 This parameter is optional.  The default it 75.
@@ -312,8 +328,8 @@ This parameter is optional.  The default it 75.
 
 A text file containing the output of a vos listvol command.  This
 parameter is optional, but if not specified then --inserver must be
-present.  The parition list is expected to be the output from "vos
-listvol" and can be the concatentation of volume lists from multiple
+present.  The partition list is expected to be the output from "vos
+listvol" and can be the concatenation of volume lists from multiple
 servers.
 
 =item --inserver=host
@@ -322,7 +338,7 @@ The name of the host to move RW volumes from to the output server.
 
 =item --inpart=part-lists
 
-A comma separated list of parititions to move.
+A comma separated list of partitions to move.
 
 =item --update
 
@@ -337,6 +353,18 @@ Turns on debugging displays.
 Print complete documentation.
 
 =back
+
+=head1 COPYRIGHT
+
+Copyright 2008-2015 The Board of Trustees of the Leland Stanford
+Junior University.
+
+Copyright 2018, 2024 Bill MacAllister <bill@ca-zephyr.org>.
+
+=head1 LICENSE
+
+This program is free software; you may redistribute it and/or modify it
+under the same terms as Perl itself.
 
 =head1 AUTHOR
 
