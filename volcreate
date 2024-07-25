@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # volcreate -- Create a volume, mount and set acl and quota
 #
@@ -66,7 +66,7 @@ our $LOADMTPT = '';
 
 # The full path to fs and vos.  vos may be in an sbin directory, which may
 # not be on the user's path by default, so check there first.
-our $FS = 'fs';
+our $FS  = 'fs';
 our $VOS = grep { -x $_ } qw(/usr/local/sbin/vos /usr/sbin/vos);
 $VOS ||= 'vos';
 
@@ -600,7 +600,7 @@ __END__
 ##############################################################################
 
 =for stopwords
-ACL AFS Crellin acl afs-admin-tools afssvr3 afssvr14 fs -hnqv loadmtpt
+ACL afs Crellin acl afs-admin-tools afssvr3 afssvr14 fs -hnq loadmtpt
 afs-mountpoints partinfo pubsw rra volcreate vos pubsw.byacc19
 
 =head1 NAME
@@ -662,7 +662,7 @@ I<volume> is the name of the volume to create.  I<quota> is the
 volume's quota.  The quota value defaults to megabytes (B<not> in
 kilobytes) if not units are specified.  Valid quota units are k, m, g,
 and t which are kilobytes, megabytes, gigabytes, and terabytes
-respecitively.  I<mount> is the full path to the intended mount
+respectively.  I<mount> is the full path to the intended mount
 location of the volume (this must begin with $VOLCREATE_MOUNT_PREFIX
 so that the mount point database remains consistent).  I<acl> is any
 normal ACL arguments to C<fs setacl>.  The quota, mount point, and

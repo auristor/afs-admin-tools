@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.5 (2024-07-17)';
+our $VERSION = '2.6 (2024-07-25)';
 #
 # partinfo -- Show summary of space on AFS server partitions.
 #
@@ -39,12 +39,8 @@ my $opt_human;
 # Site configuration
 ##############################################################################
 
-# Test to find out whether the server is OpenAFS or YFS
+# If set assumes Auristor syntax
 our $YFS_SERVER;
-my $vos_version = `vos --version`;
-if ($vos_version =~ /^auristor/xms) {
-    $YFS_SERVER = 1;
-}
 
 # The default thresholds.  The first gives the threshold before the partition
 # is considered reasonably well-utilized, and defaults to 60%.  The second
@@ -124,7 +120,7 @@ sub show {
     my $usable = int($free - ((100 - $PARTINFO_FULL) / 100) * $total);
     my $pfree  = 100 * $used / $total;
     my $cstart = $color ? choose_color($pfree) : '';
-    my $cend   = $color ? color('reset') : '';
+    my $cend   = $color ? color('reset')       : '';
     my $fmt    = "%17s: %10d %10d %10d %s%7.2f%%%s %10d\n";
     if ($opt_human) {
         $total  = human_bytes($total * 1024);
@@ -173,6 +169,12 @@ if (@ARGV != 1) {
 my $server = shift;
 if (($server =~ /^\d+$/)) {
     $server = 'afssvr' . $server;
+}
+
+# Check for AFS flavor
+my $vos_version = `vos --version`;
+if ($vos_version =~ /^auristor/xms) {
+    $YFS_SERVER = 1;
 }
 
 # Process threshold argument if provided.
