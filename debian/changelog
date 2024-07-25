@@ -1,3 +1,9 @@
+afs-admin-tools (2.6-1) unstable; urgency=medium
+
+  * New upstream version.
+
+ -- Bill MacAllister <bill@ca-zephyr.org>  Thu, 25 Jul 2024 22:57:05 +0000
+
 afs-admin-tools (2.5-1) unstable; urgency=medium
 
   * New upstream version.
