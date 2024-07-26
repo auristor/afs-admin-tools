@@ -19,30 +19,33 @@ use strict;
 use warnings;
 
 use vars qw(
-            @inParts
-            @outParts
-            %inPartInfo
-            %serverInfo
-            $opt_debug
-            $opt_freelimit
-            $opt_help
-            $opt_inserver
-            $opt_inparts
-            $opt_manual
-            $opt_sqllist
-            $opt_vollist
-            $opt_outserver
-            $opt_outparts
-            $opt_update
-            );
+  @inParts
+  @outParts
+  %inPartInfo
+  %serverInfo
+  $opt_debug
+  $opt_freelimit
+  $opt_help
+  $opt_inserver
+  $opt_inparts
+  $opt_manual
+  $opt_sqllist
+  $opt_vollist
+  $opt_outserver
+  $opt_outparts
+  $opt_update
+);
 
 # ---------------------------
 # Get a datetime string
 
 sub get_datetime {
     my ($now) = @_;
-    if (length($now)==0) {$now = time;}
-    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($now);
+    if (length($now) == 0) {
+        $now = time;
+    }
+    my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst)
+      = localtime($now);
     $mon++;
     $mon  = sprintf("%02d", $mon);
     $mday = sprintf("%02d", $mday);
@@ -50,7 +53,8 @@ sub get_datetime {
     $min  = sprintf("%02d", $min);
     $sec  = sprintf("%02d", $sec);
     $year += 1900;
-    return $year.'-'.$mon.'-'.$mday.'-'.$hour.'-'.$min.'-'.$sec;
+    return $year . '-' . $mon . '-' . $mday . '-' . $hour . '-' . $min . '-'
+      . $sec;
 }
 
 # ---------------------------
@@ -60,11 +64,11 @@ sub get_filename {
 
     my ($in, $out) = @_;
 
-    my $cnt = 0;
-    my $outFile = "./movero-from-$in-to-$out".'_'.$cnt.'.sh';
-    while ( -e $outFile ) {
+    my $cnt     = 0;
+    my $outFile = "./movero-from-$in-to-$out" . '_' . $cnt . '.sh';
+    while (-e $outFile) {
         $cnt++;
-        $outFile = "./movero-from-$in-to-$out".'_'.$cnt.'.sh';
+        $outFile = "./movero-from-$in-to-$out" . '_' . $cnt . '.sh';
     }
     return $outFile;
 
@@ -75,9 +79,10 @@ sub get_filename {
 
 sub sql_list {
 
-    my $sql = "SELECT server, part, volname, used FROM volumes "
-        . "WHERE server = '$opt_inserver' "
-        . "AND type = 'RO' ";
+    my $sql
+      = "SELECT server, part, volname, used FROM volumes "
+      . "WHERE server = '$opt_inserver' "
+      . "AND type = 'RO' ";
     if ($opt_inparts) {
         $sql .= 'AND (';
         my $word = '';
@@ -93,7 +98,7 @@ sub sql_list {
     my @lines = `remctl lsdb afsdb query "$sql"`;
 
     foreach my $line (@lines) {
-        my ($thisServer, $fullPart, $thisVol, $thisSize) = split /\s+/, $line;
+        my ($thisServer, $fullPart, $thisVol, $thisSize) = split(/\s+/, $line);
         if ($thisVol =~ s/\.readonly$//) {
             my $thisPart = $fullPart;
             $thisPart = $1 if ($thisPart =~ /\/vicep(\w+)/);
@@ -109,7 +114,7 @@ sub vos_list {
 
     my ($thisFile) = @_;
 
-    if (! -e $thisFile) {
+    if (!-e $thisFile) {
         print("ERROR: volume list file not found ($thisFile)\n");
         exit 1;
     }
@@ -126,7 +131,7 @@ sub vos_list {
         }
 
         if ($inline =~ /([\w\d\.\-]+)\s+\d+\s+RO\s+(\d+)\s+\w+\s+On\-line/) {
-            my $thisVol = $1;
+            my $thisVol  = $1;
             my $thisSize = $2;
             next unless $thisVol =~ s/.readonly$//;
             $inPartInfo{$thisPart}{$thisVol} = $thisSize;
@@ -139,7 +144,7 @@ sub vos_list {
 # ---------------------------
 # Pick a partition
 
-sub pick_partition  {
+sub pick_partition {
 
     my ($in_part, $this_size) = @_;
 
@@ -170,18 +175,18 @@ sub pick_partition  {
 
 # -- get options
 GetOptions(
-           'debug'       => \$opt_debug,
-           'freelimit=i' => \$opt_freelimit,
-           'help'        => \$opt_help,
-           'inserver=s'  => \$opt_inserver,
-           'inparts=s'   => \$opt_inparts,
-           'manual'      => \$opt_manual,
-           'sqllist'     => \$opt_sqllist,
-           'vollist=s'   => \$opt_vollist,
-           'outserver=s' => \$opt_outserver,
-           'outpart=s'   => \$opt_outparts,
-           'update'      => \$opt_update
-           );
+    'debug'       => \$opt_debug,
+    'freelimit=i' => \$opt_freelimit,
+    'help'        => \$opt_help,
+    'inserver=s'  => \$opt_inserver,
+    'inparts=s'   => \$opt_inparts,
+    'manual'      => \$opt_manual,
+    'sqllist'     => \$opt_sqllist,
+    'vollist=s'   => \$opt_vollist,
+    'outserver=s' => \$opt_outserver,
+    'outpart=s'   => \$opt_outparts,
+    'update'      => \$opt_update
+);
 
 # -- help the poor souls out
 if ($opt_help) {
@@ -201,15 +206,19 @@ if (length($opt_outserver) == 0) {
     pod2usage(-verbose => 0);
 }
 
-if ($opt_inserver > 0)  {$opt_inserver  = "afssvr$opt_inserver";}
-if ($opt_outserver > 0) {$opt_outserver = "afssvr$opt_outserver";}
-if (!$opt_freelimit)    {$opt_freelimit = 20;}
-if ($opt_freelimit > 1) {$opt_freelimit = $opt_freelimit / 100;}
+if ($opt_inserver > 0) {
+    $opt_inserver = "afssvr$opt_inserver";
+}
+if ($opt_outserver > 0) {
+    $opt_outserver = "afssvr$opt_outserver";
+}
+if (!$opt_freelimit)    { $opt_freelimit = 20; }
+if ($opt_freelimit > 1) { $opt_freelimit = $opt_freelimit / 100; }
 
 # The list of input partitions
 @inParts = ();
 if ($opt_inparts) {
-    my @pl = split (/,/,$opt_inparts);
+    my @pl = split(/,/, $opt_inparts);
     foreach my $p (@pl) {
         push @inParts, $p;
     }
@@ -218,7 +227,7 @@ if ($opt_inparts) {
 # The list of output paritions
 @outParts = ();
 if ($opt_outparts) {
-    my @pl = split (/,/,$opt_outparts);
+    my @pl = split(/,/, $opt_outparts);
     foreach my $p (@pl) {
         push @outParts, $p;
     }
@@ -233,36 +242,39 @@ if ($opt_sqllist) {
 } else {
     if ($opt_inparts) {
         foreach my $p (@inParts) {
-            my $list = "vollist-${opt_inserver}-${p}-".get_datetime().".txt";
+            my $list
+              = "vollist-${opt_inserver}-${p}-" . get_datetime() . ".txt";
             my $cmd = "vos listvol $opt_inserver $p > $list";
             print("Getting a volume list of $opt_inserver $p ...\n");
-            system ($cmd);
+            system($cmd);
             vos_list($list);
         }
     } else {
-        my $list = "vollist-${opt_inserver}-".get_datetime().".txt";
-        my $cmd = "vos listvol $opt_inserver > $list";
+        my $list = "vollist-${opt_inserver}-" . get_datetime() . ".txt";
+        my $cmd  = "vos listvol $opt_inserver > $list";
         print("Getting a volume list of $opt_inserver ...\n");
-        system ($cmd);
+        system($cmd);
         vos_list($list);
         unlink $list;
     }
 }
 
 # Get a list of free space available on the output server partitions.
-my $partCnt = 0;
-my $info = `vos partinfo $opt_outserver`;
-my @infoLines = split /\n/,$info;
+my $partCnt   = 0;
+my $info      = `vos partinfo $opt_outserver`;
+my @infoLines = split /\n/, $info;
 foreach my $p (@infoLines) {
     if ($p =~ /vicep(.):\s+(\d+)[A-Za-z\s]+?(\d+)/) {
         my $thisPart = $1;
         my $thisFree = $2;
         my $thisTot  = $3;
-        if ($thisFree < 1) {next;}
+        if ($thisFree < 1) {
+            next;
+        }
         $serverInfo{$opt_outserver}{$thisPart}{'free'} = $thisFree;
         $serverInfo{$opt_outserver}{$thisPart}{'tot'}  = $thisTot;
-        $serverInfo{$opt_outserver}{$thisPart}{'freelimit'} =
-            $opt_freelimit * $thisTot;
+        $serverInfo{$opt_outserver}{$thisPart}{'freelimit'}
+          = $opt_freelimit * $thisTot;
         $partCnt++;
     }
 }
@@ -272,7 +284,7 @@ if ($partCnt == 0) {
     exit 1;
 }
 
-my $outFile = get_filename ($opt_inserver, $opt_outserver);
+my $outFile = get_filename($opt_inserver, $opt_outserver);
 open(my $out, '>', $outFile);
 print("$outFile opened\n");
 print($out "#!/bin/bash\n");
@@ -280,12 +292,13 @@ print($out "\n");
 
 my $cnt = 0;
 foreach my $p (sort keys %inPartInfo) {
-    foreach my $v (sort keys %{$inPartInfo{$p}}) {
+    foreach my $v (sort keys %{ $inPartInfo{$p} }) {
 
         my $out_part = pick_partition($p, $inPartInfo{$p}{$v});
         if (!$out_part) {
-            printf (out "echo \"No room for %s from %s %s on %s ... skipping.\n",
-                    $v, $opt_inserver, $p, $opt_outserver);
+            printf($out
+                  "echo \"No room for %s from %s %s on %s ... skipping.\n",
+                $v, $opt_inserver, $p, $opt_outserver);
             next;
         }
 
@@ -298,14 +311,13 @@ foreach my $p (sort keys %inPartInfo) {
         print($out "else\n");
         print($out "    echo \"stopromove not found---continuing.\"\n");
         print($out "fi\n");
-        printf($out "echo \"Move %d - size %d\"\n",
-                $cnt, $inPartInfo{$p}{$v});
+        printf($out "echo \"Move %d - size %d\"\n", $cnt, $inPartInfo{$p}{$v});
         printf($out "echo \"Moving %s from %s %s to %s %s\"\n",
-                $v, $opt_inserver, $p, $opt_outserver, $out_part);
+            $v, $opt_inserver, $p, $opt_outserver, $out_part);
         print($out "date\n");
-        print($out "/ncsd/batch/mvto -s $v "
-            . "$opt_inserver $p "
-            . "$opt_outserver $out_part \n");
+        print(  $out "/ncsd/batch/mvto -s $v "
+              . "$opt_inserver $p "
+              . "$opt_outserver $out_part \n");
         $cnt++;
     }
 }
