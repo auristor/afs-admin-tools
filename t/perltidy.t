@@ -14,9 +14,11 @@
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 10;
 
 my @script_list = (
+    'afs-mkmove-ro',
+    'afs-mkmove-rw',
     'frak',
     'fsr',
     'lsmounts',
@@ -45,11 +47,11 @@ for my $script_name (@script_list) {
     push @cmd, $script;
     system(@cmd);
 
-    @cmd = ('diff', '-u', $script, $t);
-    if (system(@cmd) == 0) {
-        pass("$script is Tidy");
+    my $diff_out = `diff -u $script $t`;
+    if ($?) {
+        fail("$script is UNTIDY\n$diff_out");
     } else {
-        fail("$script is UNTIDY");
+        pass("$script is Tidy");
     }
     unlink $t;
 }

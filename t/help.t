@@ -14,9 +14,11 @@
 use strict;
 use warnings;
 
-use Test::More tests => 8;
+use Test::More tests => 10;
 
 my @script_list = (
+    'afs-mkmove-ro',
+    'afs-mkmove-rw',
     'frak',
     'fsr',
     'lsmounts',
@@ -35,7 +37,7 @@ for my $script_name (@script_list) {
     }
     my $out = `$script --help 2>&1`;
     if ($out) {
-        if (!ok($out =~ /^NAME/, "$script Help Switch")) {
+        if (!ok($out =~ /^(NAME|Usage)/, "$script Help Switch")) {
             print('out:' . $out . "\n");
             `$script --help`;
         }
