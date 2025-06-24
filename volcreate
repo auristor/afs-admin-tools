@@ -439,7 +439,7 @@ GetOptions(
     'n|dry-run|just-print' => \$JUSTPRINT,
     'p|partition=s'        => \$opt_partition,
     'proportion=f'         => \$VOLCREATE_CUTOFF,
-    'q|quota=s'            => \$opt_quota,
+    'u|quota=s'            => \$opt_quota,
     'r|replicas=i'         => \$replicas,
     's|server=s'           => \$opt_server,
     't|type=s'             => \$type,
@@ -666,7 +666,7 @@ respectively.  I<mount> is the full path to the intended mount
 location of the volume (this must begin with $VOLCREATE_MOUNT_PREFIX
 so that the mount point database remains consistent).  I<acl> is any
 normal ACL arguments to C<fs setacl>.  The quota, mount point, and
-volume can also be specified using the B<-q>, B<-m>, and B<-v> options
+volume can also be specified using the B<-u>, B<-m>, and B<-v> options
 respectively.
 
 For some types of volumes, some ACLs will be set automatically.  This is
