@@ -439,12 +439,12 @@ GetOptions(
     'n|dry-run|just-print' => \$JUSTPRINT,
     'p|partition=s'        => \$opt_partition,
     'proportion=f'         => \$VOLCREATE_CUTOFF,
-    'q|quota=s'            => \$opt_quota,
+    'Q|quota=s'            => \$opt_quota,
     'r|replicas=i'         => \$replicas,
     's|server=s'           => \$opt_server,
     't|type=s'             => \$type,
-    'version'              => \$version,
-    'v|volume=s'           => \$opt_volume
+    'v|version'            => \$version,
+    'V|volume=s'           => \$opt_volume
 ) or exit 1;
 if ($help) {
     exec('perldoc', '-t', $0) or die "Cannot fork: $!\n";
