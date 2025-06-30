@@ -1,5 +1,11 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.7 (2025-06-30)
+
+    * Update switches in volcreate and volcreate-logs to resolve
+      ambiguities.  Updates to ensure that the switches have the
+      same usage in both scripts.
+      
 afs-admin-tools 2.6 (2024-07-25)
 
     * volcreate POD updates
