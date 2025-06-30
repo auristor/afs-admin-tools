@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.6 (2024-07-25)';
+our $VERSION = '2.7 (2025-06-30)';
 #
 # File: afs-mkmove-rw - Use mvto to move AFS volumes
 #
@@ -22,26 +22,29 @@ use strict;
 use warnings;
 
 use vars qw(
-            $opt_debug
-            $opt_full
-            $opt_help
-            $opt_inserver
-            $opt_inpart
-            $opt_manual
-            $opt_list
-            $opt_outserver
-            $opt_outpart
-            $opt_partlimit
-            $opt_update
-            );
+  $opt_debug
+  $opt_full
+  $opt_help
+  $opt_inserver
+  $opt_inpart
+  $opt_manual
+  $opt_list
+  $opt_outserver
+  $opt_outpart
+  $opt_partlimit
+  $opt_update
+);
 
 # ---------------------------
 # Get a datetime string
 
 sub get_datetime {
     my ($now) = @_;
-    if (length($now)==0) {$now = time;}
-    my ($sec,$min,$hour,$mday,$mon,$year,$wday,$yday,$isdst) = localtime($now);
+    if (length($now) == 0) {
+        $now = time;
+    }
+    my ($sec, $min, $hour, $mday, $mon, $year, $wday, $yday, $isdst)
+      = localtime($now);
     $mon++;
     $mon  = sprintf("%02d", $mon);
     $mday = sprintf("%02d", $mday);
@@ -49,7 +52,8 @@ sub get_datetime {
     $min  = sprintf("%02d", $min);
     $sec  = sprintf("%02d", $sec);
     $year += 1900;
-    return $year.'-'.$mon.'-'.$mday.'-'.$hour.'-'.$min.'-'.$sec;
+    return $year . '-' . $mon . '-' . $mday . '-' . $hour . '-' . $min . '-'
+      . $sec;
 }
 
 # ---------------------------
@@ -59,11 +63,11 @@ sub get_filename {
 
     my ($s, $c) = @_;
 
-    my $cnt = 0;
-    my $outFile = "./move${cnt}-to-".$s.'_'.$c.'.sh';
-    while ( -e $outFile ) {
+    my $cnt     = 0;
+    my $outFile = "./move${cnt}-to-" . $s . '_' . $c . '.sh';
+    while (-e $outFile) {
         $cnt++;
-        $outFile = "move${cnt}-to-".$s.'_'.$c.'.sh';
+        $outFile = "move${cnt}-to-" . $s . '_' . $c . '.sh';
     }
     return $outFile;
 
@@ -74,17 +78,17 @@ sub get_filename {
 
 # -- get options
 GetOptions(
-           'debug'       => \$opt_debug,
-           'full=i'      => \$opt_full,
-           'help'        => \$opt_help,
-           'inserver=s'  => \$opt_inserver,
-           'inpart=s'    => \$opt_inpart,
-           'manual'      => \$opt_manual,
-           'list=s'      => \$opt_list,
-           'outserver=s' => \$opt_outserver,
-           'outpart=s'   => \$opt_outpart,
-           'update'      => \$opt_update
-           );
+    'debug'       => \$opt_debug,
+    'full=i'      => \$opt_full,
+    'help'        => \$opt_help,
+    'inserver=s'  => \$opt_inserver,
+    'inpart=s'    => \$opt_inpart,
+    'manual'      => \$opt_manual,
+    'list=s'      => \$opt_list,
+    'outserver=s' => \$opt_outserver,
+    'outpart=s'   => \$opt_outpart,
+    'update'      => \$opt_update
+);
 
 # -- help the poor souls out
 if ($opt_help) {
@@ -110,41 +114,44 @@ if (length($opt_outpart) == 0) {
 }
 
 if (length($opt_full) > 0) {
-    $opt_full = $opt_full/100 if ($opt_full > 1 && $opt_full < 100);
-    $opt_full = .75 if ($opt_full < 1 && $opt_full > 99);
+    $opt_full = $opt_full / 100 if ($opt_full > 1 && $opt_full < 100);
+    $opt_full = .75             if ($opt_full < 1 && $opt_full > 99);
 } else {
     $opt_full = .75;
 }
 
-if ($opt_inserver > 0)  {$opt_inserver  = "afssvr$opt_inserver";}
-if ($opt_outserver > 0) {$opt_outserver = "afssvr$opt_outserver";}
+if ($opt_inserver > 0) {
+    $opt_inserver = "afssvr$opt_inserver";
+}
+if ($opt_outserver > 0) {
+    $opt_outserver = "afssvr$opt_outserver";
+}
 
 my $delete_list = '';
 if ($opt_inserver) {
-    $opt_list = "vollist-${opt_inserver}-" 
-        . get_datetime() . ".txt";
+    $opt_list    = "vollist-${opt_inserver}-" . get_datetime() . ".txt";
     $delete_list = $opt_list;
     if (length($opt_inpart) == 0) {
         my $cmd = "vos listvol $opt_inserver > $opt_list";
         print("Getting a volume list ...\n");
-        system ($cmd);
+        system($cmd);
     } else {
         my @inparts = split ',', $opt_inpart;
         foreach my $p (@inparts) {
             my $cmd = "vos listvol $opt_inserver $p >> $opt_list";
             print("Getting a volume list for $opt_inserver $p ...\n");
-            system ($cmd);
+            system($cmd);
         }
     }
 }
 
-my @part_list = split ',',$opt_outpart;
+my @part_list      = split ',', $opt_outpart;
 my %out_part_limit = ();
-my %out_part_size = ();
+my %out_part_size  = ();
 
 # get information about each partition
 my $cmd = "vos partinfo $opt_outserver";
-my @r = `$cmd`;
+my @r   = `$cmd`;
 for my $z (@r) {
     if ($z =~ /vicep(\w):\s+(\d+)[\sA-Za-z]+(\d+)/) {
         my $part  = $1;
@@ -154,31 +161,31 @@ for my $z (@r) {
         # The amount of space we have left on the partition is
         # the limit - the used.  The used = the total - the free.
         $out_part_limit{$part} = $limit - ($totl - $free);
-        $out_part_size{$part} = 0;
+        $out_part_size{$part}  = 0;
     }
 }
 
 open(my $infile, '<', $opt_list);
-my %parts = ();    
+my %parts = ();
 while (<$infile>) {
     chomp;
     my $inline = $_;
     if ($inline =~ /([\w\d\.\-]+)\s+\d+\s+RW\s+(\d+)\s+\w+\s+On\-line/) {
-        my $thisVol = $1;
-        my $thisSize = $2;
-        my $thisSortKey = sprintf ("%015.0d", $thisSize);
+        my $thisVol     = $1;
+        my $thisSize    = $2;
+        my $thisSortKey = sprintf("%015.0d", $thisSize);
         $parts{$thisSortKey}{$thisVol} = $thisSize;
     }
 }
 
 close $infile;
 
-my $outOpened = 0;
+my $outOpened   = 0;
 my @outFileList = ();
-my $part_index = 0;
-my $done = 0;
-my $this_part = $part_list[0];
-my $cnt = 0;
+my $part_index  = 0;
+my $done        = 0;
+my $this_part   = $part_list[0];
+my $cnt         = 0;
 
 my $outFile = get_filename($opt_outserver, $this_part);
 push @outFileList, $outFile;
@@ -188,23 +195,26 @@ print($out "#!/bin/bash\n");
 print($out "\n");
 print($out "# ===============================================\n");
 print($out "# space available: $out_part_limit{$this_part} for "
-    . " partition $this_part\n");
+      . " partition $this_part\n");
 $outOpened = 1;
 
 # Pattern for pulling server info from "vol volinfo" output
-my $patVolinfo = '^\s+server\s+([\w\d]+)\..*?\s+'
-    . 'partition\s+\/vicep(\w+)\s+'
-    . '(RW|RO)\s+Site';
+my $patVolinfo
+  = '^\s+server\s+([\w\d]+)\..*?\s+'
+  . 'partition\s+\/vicep(\w+)\s+'
+  . '(RW|RO)\s+Site';
 
 foreach my $sk (keys %parts) {
-    foreach my $v (sort keys %{$parts{$sk}}) {
+    foreach my $v (sort keys %{ $parts{$sk} }) {
         my $this_size = $parts{$sk}{$v};
-        while ($out_part_size{$this_part}+$this_size 
-               > $out_part_limit{$this_part}) {
+        while ($out_part_size{$this_part} + $this_size
+            > $out_part_limit{$this_part})
+        {
             print($out "# \n");
             $part_index++;
             if ($part_index >= scalar(@part_list)) {
-                print($out "# ==============================================\n");
+                print($out
+                      "# ==============================================\n");
                 print($out "# No available space left.  Exiting.\n");
                 print("# ==============================================\n");
                 print("# No available space left.  Exiting.\n");
@@ -213,17 +223,17 @@ foreach my $sk (keys %parts) {
             $this_part = $part_list[$part_index];
             print($out "# ===============================================\n");
             print($out "# space available: $out_part_limit{$this_part} for "
-                . " partition $this_part\n");
+                  . " partition $this_part\n");
         }
 
-        my @thisInfo = `vos volinfo $v`;
+        my @thisInfo    = `vos volinfo $v`;
         my $replicaList = '';
         foreach my $infoLine (@thisInfo) {
             if ($infoLine =~ /$patVolinfo/) {
                 my $server = $1;
                 my $part   = $2;
                 my $type   = $3;
-                next if ($opt_inserver  eq $server);
+                next if ($opt_inserver eq $server);
                 next if ($opt_outserver eq $server);
                 next if ($type eq 'RW');
                 $replicaList .= "$server $part ";
@@ -241,15 +251,15 @@ foreach my $sk (keys %parts) {
         print($out "else\n");
         print($out "    echo \"stopmove not found---continuing.\"\n");
         print($out "fi\n");
-        printf ($out "echo \"Moving %s - move %d - size %d\"\n", 
-                $v, $cnt,  $sk);
+        printf($out "echo \"Moving %s - move %d - size %d\"\n", $v, $cnt, $sk);
         print($out "date\n");
-        my $cmd = "/ncsd/batch/mvto $v "
-            . "$opt_outserver $this_part "
-            . $replicaList;
+        my $cmd
+          = "/ncsd/batch/mvto $v "
+          . "$opt_outserver $this_part "
+          . $replicaList;
         print($out "echo \"Executing: $cmd\"\n");
         print($out "$cmd\n");
-        
+
     }
 }
 
@@ -372,4 +382,4 @@ Bill MacAllister <whm@stanford.edu>
 
 =cut
 
- 
+
