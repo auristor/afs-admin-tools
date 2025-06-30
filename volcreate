@@ -432,18 +432,18 @@ $0 =~ s%.*/%%;
 # ACLs, in order to allow things like -clear.
 Getopt::Long::config('bundling', 'no_ignore_case');
 GetOptions(
+    'P|proportion=f'       => \$VOLCREATE_CUTOFF,
+    'Q|quiet'              => \$quiet,
+    'V|version'            => \$version,
     'c|clone=s'            => \$clone,
     'h|help'               => \$help,
-    'q|quiet'              => \$quiet,
     'm|mountpt=s'          => \$opt_mtpt,
     'n|dry-run|just-print' => \$JUSTPRINT,
     'p|partition=s'        => \$opt_partition,
-    'proportion=f'         => \$VOLCREATE_CUTOFF,
     'q|quota=s'            => \$opt_quota,
     'r|replicas=i'         => \$replicas,
     's|server=s'           => \$opt_server,
     't|type=s'             => \$type,
-    'version'              => \$version,
     'v|volume=s'           => \$opt_volume
 ) or exit 1;
 if ($help) {
@@ -609,13 +609,17 @@ volcreate - Create and mount a new AFS volume
 
 =head1 SYNOPSIS
 
-B<volcreate> [B<-hnq>] [B<--version>] [B<-c> I<clone-from>]
-[B<--proportion> I<cutoff>] I<server> I<partition> I<volume>
-I<quota>[k|m|g|t] I<mount> [I<acl> ...]
+B<volcreate> [B<-hnQV>]
+[B<--clone>=I<clone-from>]
+[B<--proportion>=I<cutoff percent>]
+I<server> I<partition> I<volume>
+I<quota>[k|m|g|t] I<mount point> [I<acl> ...]
 
-B<volcreate> [B<-hnq>] [B<--version>] [B<-c> I<clone-from>]
-[B<-proportion> I<cutoff>] [B<-r> I<replicas>] B<-t> I<type> I<volume>
-I<quota>[k|m|g|t] I<mount> [I<acl> ...]
+B<volcreate> [B<-hnQV>] [B<--clone>=I<clone-from>]
+[B<-proportion> I<cutoff percent>]
+[B<--replicas>=I<number of replicas>]
+B<-t> I<type>
+I<volume> I<quota>[k|m|g|t] I<mount point> [I<acl> ...]
 
 =head1 DESCRIPTION
 
@@ -703,7 +707,7 @@ Don't run any commands, just print out what would have been done.
 
 The partition to create the volume on.
 
-=item B<--proportion>=I<cutoff>
+=item B<--P> I<cutoff percent> B<--proportion>=I<cutoff percent>
 
 By default, when placing read/write volumes, the destination partition
 will be chosen randomly from the top 20% of partitions ranked by the most
@@ -719,11 +723,11 @@ among all possible locations, without regard to which have the most free
 space.  Any other value will be the proportion of the possible locations
 that will be chosen between randomly.
 
-=item B<-q>, B<--quiet>
+=item B<-Q>, B<--quiet>
 
 Run quietly.  Only errors (if any) will be output.
 
-=item B<-r> I<replicas>, B<--replicas>=I<replicas>
+=item B<-r> I<number of replicas>, B<--replicas>=I<number of replicas>
 
 The number of replicas for the volume.  Use of this option indicates that
 the volume is replicated, and it will be replicated at a number of sites
@@ -744,7 +748,7 @@ find all the servers that can store that volume type and pick the server
 and partition with the most percentage space free.  This option is
 required to use B<-r>.
 
-=item B<--version>
+=item B<-V>, B<--version>
 
 Print out the version of B<volcreate> and quit.
 

@@ -437,12 +437,12 @@ sub parse_config {
 my ($help, $quiet, $ticket, $version);
 Getopt::Long::config('bundling', 'no_ignore_case');
 GetOptions(
-    'n|dry-run|just-print' => \$JUSTPRINT,
+    'Q|quiet'              => \$quiet,
+    'V|version'            => \$version,
     'h|help'               => \$help,
+    'n|dry-run|just-print' => \$JUSTPRINT,
     'k|ticket-cache=s'     => \$ticket,
-    'm|mail'               => \$MAIL,
-    'q|quiet'              => \$quiet,
-    'v|version'            => \$version
+    'm|mail'               => \$MAIL
 ) or exit 1;
 if ($help) {
     exec('perldoc', '-t', $0) or die "Cannot fork: $!";
@@ -535,7 +535,7 @@ volcreate-logs - Create and grant quota to log volumes in AFS
 
 =head1 SYNOPSIS
 
-B<volcreate-logs> [B<-hmnqv>] [B<-k> I<ticket-cache>]
+B<volcreate-logs> [B<-hmnQV>] [B<-k> I<ticket-cache>]
 
 =head1 DESCRIPTION
 
@@ -605,12 +605,12 @@ set.  See L<CONFIGURATION> below.
 Don't take any action other than inspection.  Instead, just print to
 standard out each command that would be executed.
 
-=item B<-q>, B<--quiet>
+=item B<-Q>, B<--quiet>
 
 Suppress any additional output other than the one line per action taken
 (done mostly by adding the B<-q> option to B<volcreate>).
 
-=item B<-v>, B<--version>
+=item B<-V>, B<--version>
 
 Print out the version of B<volcreate-logs> and exit.
 
