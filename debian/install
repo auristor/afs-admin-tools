@@ -1,0 +1,8 @@
+frak           /usr/bin
+fsr            /usr/bin
+lsmounts       /usr/bin
+mvto           /usr/bin
+partinfo       /usr/bin
+volcreate      /usr/bin
+volcreate-logs /usr/bin
+volnuke        /usr/bin

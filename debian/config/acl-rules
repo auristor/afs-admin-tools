@@ -1,0 +1,15 @@
+# Rules specifying the default ACLs that should be set on volumes created with
+# volcreate.  See the volcreate man page for more information.
+#
+# The format of this file should be a regular expression matching a class of
+# volumes, surrounded by // and starting in the first column, and then
+# followed by whitespace-indented user/ACL pairs that apply to that class of
+# volumes, one per line.  For example:
+#
+#    /^user\./
+#        system:administrators read
+#
+# All matching regular expressions will contribute their set of ACL settings
+# to the final ACL string.  Any ACLs given on the command line of volcreate
+# will take precedence over the ones in this file (but the ones in this file
+# will still be applied -- the ACLs will be merged).
