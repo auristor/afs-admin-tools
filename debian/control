@@ -1,0 +1,25 @@
+Source: afs-admin-tools
+Section: net
+Priority: optional
+Build-Depends: debhelper (>= 13), libstat-lsmode-perl,
+ libtest-minimumversion-perl, libtest-pod-perl, libtest-strict-perl,
+ libtimedate-perl, perl-doc, perltidy
+Maintainer: Bill MacAllister <bill@ca-zephyr.org>
+Bugs: mailto:bill@ca-zephyr.org
+Homepage: https://github.com/auristor/afs-admin-tools
+Standards-Version: 4.6.2
+Vcs-Git: git://github.com/auristor/afs-admin-tools.git
+Vcs-Browser: https://github.com/auristor/afs-admin-tools
+
+Package: afs-admin-tools
+Architecture: all
+Depends: ${misc:Depends}, ${perl:Depends}, libstat-lsmode-perl,
+ libtimedate-perl, openafs-client | auristorfs-client
+Description: Utilities for managing the AFS distributed file system
+ AFS is a distributed network file system.  afs-admin-tools provides a
+ collection of additional utilities to help ease administration of AFS
+ servers, volumes, and directory ACLs.  It includes scripts to report the
+ differences between read-only and read/write volumes; make all fs
+ commands recursive; create, delete, and move volumes more easily than
+ with vos alone; and report AFS server partition usage in a more readable
+ form.  These utilities also support Auristor AFS systems.

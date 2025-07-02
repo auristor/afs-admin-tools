@@ -1,0 +1,24 @@
+# A list of AFS servers for your local site, their physical locations, and the
+# classes of volumes that should be put on that server (or that server
+# partition or partition range).  This file defines the types that can then be
+# used as values for the -t option to volcreate.  See the volcreate man page
+# for more information.
+#
+# The syntax of each line is:
+#
+#     <server> [<location>] <type> ... <partition>:<type> ...
+#
+# The [] here are part of the syntax; they do not represent an optional
+# element.  For example:
+#
+#     afssvr10 [west] user a-b:data c:logs
+#
+# This defines a server named afssvr10 (in the local domain) whose location is
+# "west".  Locations are used to distribute read-only replicas over as many
+# locations as possible.  Volumes of type "user" can be put on any partition
+# on this server.  Volumes of type "data" can be put on partitions a or b, and
+# volumes of type "logs" can be put on partition c.
+#
+# There is additional syntax for specifying the read/write and read-only
+# locations for a volume type by appending -rw and -ro to the volume type.
+# See the volcreate man page.

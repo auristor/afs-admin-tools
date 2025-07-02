@@ -1,4 +1,4 @@
-                     afs-admin-tools release 2.2
+                     afs-admin-tools release 2.8
                     (utilities for AFS management)
                 Author Russ Allbery <eagle@eyrie.org>
          Maintained by Bill MacAllister <bill@ca-zephyr.org>
@@ -169,7 +169,7 @@ LICENSE
     Copyright 1998, 1999, 2000, 2001, 2002, 2003, 2004, 2005, 2006, 2007,
         2008, 2010, 2011, 2013
         The Board of Trustees of the Leland Stanford Junior University
-    Copyright 2019
+    Copyright 2019 -- 2025
         Bill MacAllister <bill@ca-zephyr.org>
 
     These programs are free software; you may redistribute them and/or

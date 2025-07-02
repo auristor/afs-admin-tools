@@ -10,6 +10,8 @@ set -e
 
 version=$(grep '^afs-admin-tools' NEWS | head -1 | cut -d' ' -f 2)
 date=$(grep '^afs-admin-tools' NEWS | head -1 | cut -d' ' -f 3)
+echo "Using version:$version date:$date"
 for script in $(grep -ls 'our \$VERSION' [a-z]*) ; do
+    echo "Updating $script"
     sed -i -e "s!our \$VERSION =.*!our \$VERSION = '$version $date';!" $script
 done

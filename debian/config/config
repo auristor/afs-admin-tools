@@ -1,0 +1,14 @@
+# The general configuration for all afs-admin-tools programs.  For possible
+# configuration options, see the man pages for the individual programs.
+#
+# Variables should be set using the normal Perl configuration syntax:
+#
+#     $VARIABLE = 'value';
+#
+# This configuration file must be valid Perl code and return true (normally
+# by ending in "1;").
+
+# Add any local settings here.
+
+# Keep this at the end of the file.
+1;

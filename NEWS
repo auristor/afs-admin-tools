@@ -1,5 +1,15 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.8 (2025-07-01)
+
+    * Make the package a Debian native package so that the debian
+      branch can be removed from the repository.
+    * Minor perltidy update to volcreate.
+    
+afs-admin-tools 2.7 (2025-06-30)
+
+    * Correct ambiguous switch definitions in volcreate.
+    
 afs-admin-tools 2.6 (2024-07-25)
 
     * volcreate POD updates

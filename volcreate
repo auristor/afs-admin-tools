@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.6 (2024-07-25)';
+our $VERSION = '2.8 (2025-07-01)';
 #
 # volcreate -- Create a volume, mount and set acl and quota
 #
@@ -314,8 +314,9 @@ sub volume_create {
         die "ERROR: invalid quota value ($quota)\n";
     }
 
-    system($VOS, 'create', '-server', $server,
-        '-partition', $partition, '-name', $volume,
+    system(
+        $VOS,         'create',   '-server', $server,
+        '-partition', $partition, '-name',   $volume,
         '-maxquota',  $quota_kbytes
       ) == 0
       or die 'Failed to create volume (status ', ($? >> 8), ")\n";
@@ -335,8 +336,9 @@ sub volume_clone {
     system($VOS, 'dump', '-id', $old, '-file', $filename) == 0
       or die "$0: failed to dump volume $old (status ", ($? >> 8), ")\n";
     print "Restoring $new from ", $filename, "\n";
-    system($VOS, 'restore', '-server', $server, '-partition',
-        $partition, '-name', $new, '-file', $filename
+    system(
+        $VOS,       'restore', '-server', $server, '-partition',
+        $partition, '-name',   $new,      '-file', $filename
       ) == 0
       or die "$0: failed to create volume $new (status ", ($? >> 8), ")\n";
     close $fh;
