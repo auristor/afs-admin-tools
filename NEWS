@@ -1,5 +1,10 @@
                    User-Visible afs-admin-tools Changes
 
+afs-admin-tools 2.9 (2025-08-18)
+
+    * Update to volcreate to allow the creation of volumes without
+      specify any acls to proceed without warnings.
+
 afs-admin-tools 2.8 (2025-07-01)
 
     * Make the package a Debian native package so that the debian

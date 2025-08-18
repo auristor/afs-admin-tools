@@ -1,5 +1,5 @@
 #!/usr/bin/perl
-our $VERSION = '2.8 (2025-07-01)';
+our $VERSION = '2.9 (2025-08-18)';
 #
 # File: afs-mkmove-rw - Use mvto to move AFS volumes
 #

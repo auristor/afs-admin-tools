@@ -2,7 +2,8 @@ afs-admin-tools (2.9) unstable; urgency=medium
 
   * Update volcreate processing of ACLs to allow volume creation
     of volumes with no ACLs to proceed without warnings.
-
+  * Update package version to 2.9
+  
  -- Bill MacAllister <bill@ca-zephyr.org>  Mon, 18 Aug 2025 22:15:32 +0000
 
 afs-admin-tools (2.8) unstable; urgency=medium
@@ -10,7 +11,7 @@ afs-admin-tools (2.8) unstable; urgency=medium
   * Move the debian build directory into the master branch of
     the afs-admin-tools git repository.
   * Make the debian package a native package.
-  * Update the package version to 8.
+  * Update the package version to 2.8.
 
  -- Bill MacAllister <bill@ca-zephyr.org>  Tue, 01 Jul 2025 23:08:03 +0000
 
