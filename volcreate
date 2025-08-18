@@ -13,7 +13,7 @@ our $VERSION = '2.8 (2025-07-01)';
 #     The Board of Trustees of the Leland Stanford Junior University
 #
 # Updated by Bill MacAllister <bill@ca-zephyr.org>
-# Copyright 2018
+# Copyright 2018-2025
 #    Bill MacAllister <bill@ca-zephyr.org>
 #
 # This program is free software; you may redistribute it and/or modify it
@@ -286,6 +286,49 @@ sub find_best_replicated {
     return @locations;
 }
 
+# Set the ACLs of the volume appropriately.  Some volumes have their own
+# particular ACL conventions; take care of those here as well.
+sub get_acl_list {
+    my ($volume, @acls) = @_;
+
+    # Find any extra ACLs that apply to this volume.
+    my @extra;
+    if (open(ACLS, '<', $ACLS)) {
+        my $found = 0;
+        while (<ACLS>) {
+            chomp;
+            my $inline = $_;
+            if ($inline =~ /^\s+\#/) {
+                next;
+            }
+            if ($inline =~ /^\s*$/) {
+                next;
+            }
+            if ($inline =~ m%^/(.*)/\s*$%) {
+                my $regex = $1;
+                if ($volume =~ /$regex/) {
+                    $found = 1;
+                }
+            } elsif ($found && $inline =~ /^\s/) {
+                my ($user, $acl, $bogus) = split;
+                if ($bogus || !$user || !$acl) {
+                    warn "$0: syntax error on line $. of $ACLS\n";
+                    next;
+                }
+                push(@extra, $user, $acl);
+            }
+        }
+        close ACLS;
+    } else {
+        warn "$0: cannot open $ACLS: $!\n";
+    }
+
+    # Append the extra ACLs that apply to this volume.
+    push(@acls, @extra);
+
+    return @acls;
+}
+
 ##############################################################################
 # AFS operations
 ##############################################################################
@@ -293,7 +336,10 @@ sub find_best_replicated {
 # Create a volume, given the server, partition, volume name, and quota.  Dies
 # on a failure to create the volume.
 sub volume_create {
-    my ($server, $partition, $volume, $quota) = @_;
+    my ($server, $partition, $volume, $quota, @acls) = @_;
+
+    my @cmd = ();
+
     my $quota_kbytes;
     if ($quota =~ /^(\d+)$/xms) {
         $quota_kbytes = $quota * 1024;
@@ -314,14 +360,31 @@ sub volume_create {
         die "ERROR: invalid quota value ($quota)\n";
     }
 
-    system(
-        $VOS,         'create',   '-server', $server,
-        '-partition', $partition, '-name',   $volume,
-        '-maxquota',  $quota_kbytes
-      ) == 0
-      or die 'Failed to create volume (status ', ($? >> 8), ")\n";
-    system($VOS, 'backup', '-id', $volume) == 0
-      or die 'Failed to backup volume (status ', ($? >> 8), ")\n";
+    @cmd = ($VOS, 'create');
+    push(@cmd, '-server',    $server);
+    push(@cmd, '-partition', $partition);
+    push(@cmd, '-name',      $volume);
+    push(@cmd, '-maxquota',  $quota_kbytes);
+    if (system(@cmd)) {
+        die 'Failed to create volume (status ', ($? >> 8), ")\n";
+    }
+
+    @cmd = ($VOS, 'backup', '-id', $volume);
+    if (system(@cmd)) {
+        die 'Failed to backup volume (status ', ($? >> 8), ")\n";
+    }
+
+    # Set the acls on the volume
+    my @this_acl_list = get_acl_list($volume, @acls);
+    if (scalar(@this_acl_list) > 0) {
+        @cmd = ($VOS, 'setrootacl');
+        push(@cmd, '-id',  $volume);
+        push(@cmd, '-acl', @this_acl_list);
+        if (system(@cmd)) {
+            warn 'Failed to set acls (status ', ($? >> 8), ")\n";
+        }
+    }
+
     return;
 }
 
@@ -580,12 +643,9 @@ if ($type) {
 if ($clone) {
     volume_clone($server, $partition, $volume, $clone);
 } else {
-    volume_create($server, $partition, $volume, $quota);
+    volume_create($server, $partition, $volume, $quota, @acls);
 }
 volume_mount($volume, $mtpt);
-if (!$clone) {
-    volume_setacls($volume, $mtpt, @acls);
-}
 
 # If the volume is replicated, take care of creating and releasing the
 # replicas now that the ACL is set correctly.
@@ -946,7 +1006,7 @@ Updated with Auristor support by Bill MacAllister <bill@ca-zephyr.org>.
 Copyright 1998, 1999, 2000, 2002, 2004, 2005, 2011 The Board of Trustees
 of the Leland Stanford Junior University.
 
-Copyright 2018 Bill MacAllister <bill@ca-zephyr.org>
+Copyright 2018-2025 Bill MacAllister <bill@ca-zephyr.org>
 
 This program is free software; you may redistribute it and/or modify it
 under the same terms as Perl itself.
