@@ -176,7 +176,7 @@ sub display_kbytes {
 # quota.
 sub check_quota {
     my ($volume, $mountpoint, $quota_min) = @_;
-    my $minimum   = kbytes($quota_min);
+    my $minimum   = $quota_min;
     my @listquota = `$FS listquota -path $mountpoint 2>&1`;
 
     # The first line is either an error or headers.  Check to see if it is
