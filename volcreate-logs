@@ -176,7 +176,7 @@ sub display_kbytes {
 # quota.
 sub check_quota {
     my ($volume, $mountpoint, $quota_min) = @_;
-    my $minimum   = kbytes($quota_min);
+    my $minimum   = $quota_min;
     my @listquota = `$FS listquota -path $mountpoint 2>&1`;
 
     # The first line is either an error or headers.  Check to see if it is
@@ -204,7 +204,7 @@ sub check_quota {
     $newquota = $minimum if ($newquota < $minimum);
     if ($newquota != $quota) {
         my $s = display_kbytes($newquota);
-        report "Setting quota to $s MB for $volume\n";
+        report "Setting quota to $s for $volume\n";
         if (
             system($FS, 'setquota', '-path', $mountpoint, '-max', $newquota)
             != 0)
